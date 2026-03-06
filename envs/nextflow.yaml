@@ -1,5 +1,5 @@
 channels:
-  - defaults
+  - bioconda
   - conda-forge
 dependencies:
-  - snakemake=5.19.0
+  - nextflow

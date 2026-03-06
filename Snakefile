@@ -7,19 +7,39 @@ output_dir = config["all"]["output_dir"]
 # 0.2 specify target rules
 rule all:
     input:
-        output_dir + 'path'
-        
-#+++++++++++++++++++++++++++++++++++++++++ 1 XXXXXXXXXXXXXXXXXXXXXXXX  +++++++++++++++++++++++++++++++++++++++++++++
-# 1.1  
-rule RuleName:
+        "results/sarek/.done"
+
+#+++++++++++++++++++++++++++++++++++++++++ 1 RUN SAREK VARIANT CALLING +++++++++++++++++++++++++++++++++++++++++++++
+# 1.1 Run Sarek
+rule Sarek:
     input:
-        data_dir + 'path',
+        "samplesheet.csv"
     output:
-       output_dir + 'path'
+        "results/sarek/.done"
+    threads: 2
+    resources:
+        mem_mb=10000
     conda:
-       "envs/R.yaml"
-    script:
-        "scripts/"
+        "envs/nextflow.yaml"
+    params:
+        genome="GRCh38",
+        profile="singularity",
+        tools="mutect2",
+        outdir = output_dir + 'sarek'
+    shell:
+        """
+        nextflow run nf-core/sarek -r 3.8.1 \
+            -profile {params.profile} \
+            --input {input} \
+            --outdir results/sarek \
+            --genome {params.genome} \
+            --tools {params.tools} \
+            -resume \
+            -max_cpus {threads} \
+            -max_memory '{resources.mem_mb} MB'
+
+        touch {output}
+        """
 
 #-------------------------------------------------------------------------------------------------------------------
 # 1.2
