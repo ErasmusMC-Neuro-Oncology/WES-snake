@@ -15,4 +15,5 @@ plots/
 output/
 .RData
 .Rhistory*
+.nextflow*
 samplesheet.csv
