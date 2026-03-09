@@ -14,7 +14,7 @@ rule all:
 # 1.1 Run Sarek
 rule Sarek:
     input:
-        "samplesheet.csv"
+        "../MINT/data/samplesheets/samplesheet_WES.csv"
     output:
         "results/sarek/.done"
     threads: 2
@@ -23,12 +23,16 @@ rule Sarek:
     conda:
         "envs/nextflow.yaml"
     log:
-        "logs/sarek/nextflow_"+datetime.now().strftime("%Y_%m_%d_%H:%M:%S")+".log"
+        "logs/sarek/nextflow_"+datetime.now().strftime("%Y_%m_%d_%H%M%S")+".log"
     params:
-        genome="GRCh38",
+        genome="hg38",
         profile="singularity",
-        tools="mutect2",
-        outdir = output_dir + 'sarek'
+        tools="mutect2,strelka,merge",
+        outdir = output_dir + 'sarek',
+        targets = config['sarek']['targetregions'],
+        intervals = config['sarek']['interval_padding'],
+        gnomAD = config['sarek']['gnomAD'],
+        dbSNP = config['sarek']['dbSNP']
     shell:
         """
         nextflow -log {log} run nf-core/sarek -r 3.8.1 \
@@ -37,12 +41,17 @@ rule Sarek:
             --outdir {params.outdir} \
             --genome {params.genome} \
             --tools {params.tools} \
+            --intervals {params.targets} \
+            --interval_padding {params.intervals} \
+            --germline_resource {params.gnomAD} \
+            --dbsnp {params.dbSNP} \
             --max_cpus {threads} \
             --max_memory '{resources.mem_mb} MB'
+            --somatic \
+            --germline \
+            --wes \
             -resume 
-            
+        
         touch {output}
         """
 
-#-------------------------------------------------------------------------------------------------------------------
-# 1.2

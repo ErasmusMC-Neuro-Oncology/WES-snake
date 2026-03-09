@@ -3,6 +3,12 @@ all:
     data_dir: "~/mnt/neuro-genomic-1-ro/MINT/WES_data/"  # Specify main data directory
     output_dir: "output/"                  # Specify main output directory   
 
+sarek:
+  targetregions : "~/mnt/neuro-genomic-1-ro/MINT/WES_data/exome_panel_baits/S31285117_hs_hg38/S31285117_Regions.bed" # Exome regions
+  interval_padding: 100 # region padding around capture regions
+  gnomAD : "~/Resources/gnomad/hg38/af-only-gnomad.hg38.vcf.gz" # Mutect2 germline resource w population frequencies
+  dbSNP: "~/Resources/dbSNP/hg38/GCF_000001405.40.vcf.gz" # SNP database for germline calibration score
+  
 
 
 
