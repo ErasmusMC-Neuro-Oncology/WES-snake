@@ -28,23 +28,25 @@ rule Sarek:
     log:
         "logs/sarek/{sample}/nextflow_"+datetime.now().strftime("%Y_%m_%d_%H%M%S")+".log"
     params:
-        genome="GATK.GRCh38",
         profile="singularity",
-        tools="mutect2,strelka,merge",
+        tools="mutect2,merge",
         reference = config['sarek']['reference'],
         targets = config['sarek']['targetregions'],
         intervals = config['sarek']['interval_padding'],
         gnomAD = config['sarek']['gnomAD'],
         dbSNP = config['sarek']['dbSNP'],
+        COSMIC = config['sarek']['COSMIC'],
+        HMF_PON = config['sarek']['HMF_PON'],
+        workdir = config['sarek']['workdir'],
         outdir=lambda wildcards: f"{output_dir}sarek/{wildcards.sample}",
     shell:
         """
         nextflow -log {log} run nf-core/sarek -r 3.8.1 \
             -profile {params.profile} \
+            -work-dir {params.workdir} \
             --sample {wildcards.sample} \
             --input {input} \
             --outdir {params.outdir} \
-            --genome {params.genome} \
             --fasta {params.reference} \
             --tools {params.tools} \
             --intervals {params.targets} \
@@ -55,9 +57,13 @@ rule Sarek:
             --fastp_max_cpus {threads} \
             --bwa_max_cpus {threads} \
             --gatk_max_cpus {threads} \
-            --max_memory '{resources.mem_mb} MB'
+            --max_memory '{resources.mem_mb} MB' \
+            --vep \
+            --vep_custom {params.COSMIC},COSMIC,vcf,exact,0,ID \
+            --vep_custom {params.HMF_PON},HMF_PON,vcf,exact,0 \
             --tumor_only \
-            --wes 
+            --wes \
+            --mutect2_extra_args "--genotype-germline-sites true --genotype-pon-sites true"
         -resume
         
         touch {output}
