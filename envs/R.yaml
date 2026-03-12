@@ -2,7 +2,12 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  - anndata
+  - pip
+  - r-anndata
   - r-dplyr
   - r-tidyr
   - r-purrr
   - r-devtools
+  - bioconductor-complexheatmap
+  

@@ -28,13 +28,12 @@ rule Sarek:
     log:
         "logs/sarek/{sample}/nextflow_"+datetime.now().strftime("%Y_%m_%d_%H%M%S")+".log"
     params:
-        profile="singularity",
-        tools="mutect2,merge",
+        genome = 'GATK.GRCh38',
+        profile = "singularity",
+        tools = "mutect2,merge",
         reference = config['sarek']['reference'],
         targets = config['sarek']['targetregions'],
         intervals = config['sarek']['interval_padding'],
-        gnomAD = config['sarek']['gnomAD'],
-        dbSNP = config['sarek']['dbSNP'],
         COSMIC = config['sarek']['COSMIC'],
         HMF_PON = config['sarek']['HMF_PON'],
         workdir = config['sarek']['workdir'],
@@ -47,12 +46,10 @@ rule Sarek:
             --sample {wildcards.sample} \
             --input {input} \
             --outdir {params.outdir} \
-            --fasta {params.reference} \
+            --genome {params.genome} \
             --tools {params.tools} \
             --intervals {params.targets} \
             --interval_padding {params.intervals} \
-            --germline_resource {params.gnomAD} \
-            --dbsnp {params.dbSNP} \
             --max_cpus {threads} \
             --fastp_max_cpus {threads} \
             --bwa_max_cpus {threads} \
@@ -61,6 +58,7 @@ rule Sarek:
             --vep \
             --vep_custom {params.COSMIC},COSMIC,vcf,exact,0,ID \
             --vep_custom {params.HMF_PON},HMF_PON,vcf,exact,0 \
+            --save_mapped --save_output_as_bam \
             --tumor_only \
             --wes \
             --mutect2_extra_args "--genotype-germline-sites true --genotype-pon-sites true"
