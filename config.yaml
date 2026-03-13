@@ -1,8 +1,8 @@
 ---
 all:
-    samplesheet: '../MINT/data/samplesheets/samplesheet_WES.csv' # specify sarek samplesheet: must contain patient, sample, status, lane, fastq_1 and fastq_2
-    data_dir: "~/mnt/neuro-genomic-1-ro/MINT/WES_data/"  # Specify main data directory
-    output_dir: "output/"                  # Specify main output directory   
+    samplesheet: '/home/jurriaan/Projects/MINT/data/samplesheets/samplesheet_WES.csv' # specify sarek samplesheet: must contain patient, sample, status, lane, fastq_1 and fastq_2
+    data_dir: "/home/jurriaan/mnt/neuro-genomic-1-ro/MINT/WES_data/"  # Specify main data directory
+    output_dir: "/home/jurriaan/Projects/WES-snake/output/"                  # Specify main output directory   
 
 sarek:
   workdir: '/data/jurriaan/sarek/work/' # directory to save sarek working dir
@@ -13,3 +13,7 @@ sarek:
   dbSNP: "/data/Resources/dbSNP/hg38/GCF_000001405.40.vcf.gz" # SNP database for germline calibration score
   COSMIC: "/data/Resources/COSMIC/hg38/Cosmic_GenomeScreensMutant_v103_GRCh38.vcf.gz" # Path to COSMIC annotations
   HMF_PON: "/data/Resources/HMF/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
+
+CopyWriteR:
+    cores: 10 # number of cores
+    binsize: '100000' # CopyWriteR binsize (default=100kbp)

@@ -1,0 +1,15 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-dplyr
+  - r-tidyr
+  - r-tibble
+  - bioconductor-copywriter
+  - bioconductor-qdnaseq.hg38
+  - bioconductor-dnacopy
+  - bioconductor-biobase
+  - bioconductor-genomicranges
+  - bioconductor-clonality
+  - r-devtools
+
