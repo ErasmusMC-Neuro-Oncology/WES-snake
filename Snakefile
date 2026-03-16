@@ -5,6 +5,7 @@ import pandas as pd
 # 0.1 Prepare variables and wildcards
 data_dir = config["all"]["data_dir"]
 output_dir = config["all"]["output_dir"]
+
 # Fetch sample wildcards
 Patients = pd.read_csv(config['all']['samplesheet'])['patient'].to_numpy()
 Samples = pd.read_csv(config['all']['samplesheet'])['sample'].to_numpy()
@@ -15,13 +16,16 @@ rule all:
         expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz", patient = Patients)
 
 #+++++++++++++++++++++++++++++++++++++++++ 1 RUN SAREK VARIANT CALLING +++++++++++++++++++++++++++++++++++++++++++++
-# 1.1 Run Sarek tumor-only variant calling
+# 1.1 Run Sarek variant calling
 rule Sarek:
     input:
         config['all']['samplesheet']
     output:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
-        bam = output_dir + "sarek/{patient}/preprocessing/mapped/{patient}_tumor1/{patient}_tumor1.sorted.bam",
+        recal = temp(directory(output_dir + "sarek/{patient}/preprocessing/recalibrated/")),
+        md = temp(directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/")),
+        sorted_cram = temp(output_dir + "sarek/{patient}/preprocessing/mapped/{patient}_tumor1/{patient}_tumor1.sorted.cram"),
+        sorted_bam = output_dir + "sarek/{patient}/preprocessing/mapped/{patient}_tumor1/{patient}_tumor1.sorted.bam",
         vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"
     threads: 2
     resources:
@@ -38,15 +42,13 @@ rule Sarek:
         targets = config['sarek']['targetregions'],
         intervals = config['sarek']['interval_padding'],
         HMF_PON = config['sarek']['HMF_PON'],
-        workdir = config['sarek']['workdir'],
-        outdir=lambda wildcards: f"{output_dir}sarek/{wildcards.patient}",
+        workdir=lambda wildcards: f"{config['sarek']['workdir']}/{wildcards.patient}",
+        outdir=lambda wildcards: f"{output_dir}/sarek/{wildcards.patient}",
     shell:
         """
-        run_dir={params.workdir}/sessions/{wildcards.patient}
-        mkdir -p $run_dir
-        cd $run_dir
-
-        # Create samplesheet
+        export NXF_WORK={params.workdir}
+        
+        # Subset samplesheet
         awk -F',' '$1=="patient" || $1=="{wildcards.patient}"' {input} > {output.samplesheet}
 
         nextflow -log {log} run nf-core/sarek -r 3.8.1 \
@@ -69,23 +71,35 @@ rule Sarek:
               --save_mapped \
               --wes \
               --mutect2_extra_args "--genotype-germline-sites true --genotype-pon-sites true"
+
+        # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
+        samtools view -b -o {output.sorted_bam} {output.sorted_cram}
+        
+        # Clean cache and intermediate files upon completion but keep on failure
+        status=$?
+        if [ $status -eq 0 ]; then
+        rm -rf {params.workdir}
+        else
+        echo "Sarek failed"
+        fi
+        
         """
+
+
 #+++++++++++++++++++++++++++++++++++++++++ 2 PERFORM CNA ANALYSIS +++++++++++++++++++++++++++++++++++++++++++++
 # 2.1 Run CopywriteR, Normalize with QDNAseq and export results
-"""
 rule CNA_analysis:
     input:
-        bam= output_dir + 'sarek/{patient}/preprocessing/recalibrated/{sample}/{sample}.recal.bam'
+        bam= output_dir + "sarek/{patient}/preprocessing/mapped/{patient}_tumor1/{patient}_tumor1.sorted.bam"
     output:
-        output_dir + 'copywriter/{sample}/CNAprofiles/read_counts.txt'
+        sample_dir = temp(directory(output_dir + "copywriter/{binsize}bp/{patient}/")),
+        QDNAseq = output_dir + 'QDNAseq/{binsize}bp/{patient}/data/QDNAseq_Segments.Rds',
+        Segments = output_dir + 'QDNAseq/{binsize}bp/{patient}/data/QDNAseq_Segments.txt'
     params:
-genome = 'hg38',
-outdir = output_dir + 'copywriter/'
-cores = config'CopyWriteR']['cores']
-        binsize = config['CopyWriteR']['binsize'],
-
+        genome = 'hg38',
+        cores = config['CopyWriteR']['cores'],
+        outdir=lambda wildcards: f"{output_dir}/copywriter/{wildcards.binsize}bp/",
     conda:
         "envs/copywritr.yaml"
     script:
         'scripts/CNA_analysis.R'
-"""

@@ -30,12 +30,18 @@ if(exists("snakemake")){
     input_bam <- snakemake@input[["bam"]]
     sample <- snakemake@wildcards[["sample"]]
     genome <- snakemake@params[["genome"]]
-    binsize <- snakemake@params[["binsize"]]
+    binsize <- snakemake@wildcards[["binsize"]]
     cores <- snakemake@params[["cores"]]
     outdir <- snakemake@params[["outdir"]]
+    sample_dir <- snakemake@output[["sample_dir"]]
+    QDNAseq_output <- snakemake@output[["QDNAseq"]]
+    Segments_output <- snakemake@output[["Segments"]]  
 }else{
     input_bam <- 'output/sarek/MINT12/preprocessing/mapped/MINT12_tumor1/MINT12_tumor1.sorted.bam'
     sample <- 'MINT12_tumor1'
+    sample_dir <- 'output/copywriter/MINT12_tumor1/'
+    QDNAseq_output <- 'output/QDNAseq/MINT12/data/QDNAseq_Segments_100000bp.Rds'
+    Segments_output <- 'output/QDNAseq/MINT12/data/QDNAseq_Segments_100000bp.Rds'
     genome <- 'hg38'
     binsize <- '100000'
     cores <- 10
@@ -55,7 +61,7 @@ preCopywriteR(output.folder = outdir,
 # get number of kb bins
 kbbin <- substring(binsize,1,nchar(binsize)-3)
 # Load annotation files
-load(file = file.path(outdir, paste0("hg38_",kbbin,"kb_chr"), "blacklist.rda"))
+load(file = file.path(outdir, paste0(genome,"_",kbbin,"kb_chr"), "blacklist.rda"))
 # set number of workers
 bp.param <- SnowParam(workers = cores, type = "SOCK")
 # Create sample df
@@ -64,21 +70,14 @@ sample.control <- data.frame(samples = input_bam,controls=input_bam)
 #-------------------------------------------------------------------------------
 # 2.1 Run CopyWritR
 #-------------------------------------------------------------------------------
-# Fetch and create sample output dir
-sample_dir <- paste0(outdir,sample,'/')
-if(!sample %in% list.files(paste0(getwd(),"/output/"))){
-    dir.create(sample_dir)
-}
-
 # Run CopyWriteR
 if(!"input.Rdata" %in% list.files(paste0(sample_dir,"/CNAprofiles/"))){
     unlink(paste0(sample_dir,"/CNAprofiles/"), recursive = TRUE)
     CopywriteR(sample.control = sample.control,
                destination.folder = sample_dir,
-               reference.folder = file.path(outdir, paste0("hg38_",kbbin,"kb_chr")),
+               reference.folder = file.path(outdir, paste0(genome,"_",kbbin,"kb_chr")),
                bp.param=bp.param)
 }
-
 
 #-------------------------------------------------------------------------------
 # 3.1 Parse Copywriter output
@@ -90,7 +89,7 @@ read_counts <- read.delim(paste0(sample_dir,'/CNAprofiles/read_counts.txt'))
 #-------------------------------------------------------------------------------
 #---------- create bins file  ----------
 kbbin <- substring(binsize,1,nchar(binsize)-3)
-load(paste0(outdir,"hg38_",kbbin,"kb_chr/GC_mappability.rda"))
+load(paste0(outdir,genome,"_",kbbin,"kb_chr/GC_mappability.rda"))
 
 # create dataframe containing fdata fields
 fData_all <-
@@ -140,13 +139,8 @@ features <- intersect(rownames(bins),rownames(counts))
 QDNAseqCopyNumbers <- new("QDNAseqReadCounts",bins=bins[features,],counts=as.matrix(counts[features,]),phenodata=phenodata)
 
 #-------------------------------------------------------------------------------
-# 2.1 Perform QDNAseq normalizations
+# 4.1 Perform QDNAseq normalizations
 #-------------------------------------------------------------------------------
-
-ls()
-blacklist.grange
-GC.mappa.grange
-
 corrected <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, mappability=FALSE, bases=FALSE , chromosomes=c('chrY','chrX','X','Y')) %>%
     estimateCorrection() %>%
     correctBins() %>%
@@ -155,7 +149,9 @@ corrected <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, map
     segmentBins() %>%
     normalizeSegmentedBins()
 
-
-saveRDS('')
+#-------------------------------------------------------------------------------
+# 5.1 Write to file
+#-------------------------------------------------------------------------------
+saveRDS(corrected,QDNAseq_output)
 
 exportBins(corrected,'test.bed', format = 'bed', type = 'segments')
