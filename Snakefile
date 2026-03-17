@@ -6,14 +6,13 @@ import pandas as pd
 data_dir = config["all"]["data_dir"]
 output_dir = config["all"]["output_dir"]
 
-# Fetch sample wildcards
+# Fetch Patient wildcards
 Patients = pd.read_csv(config['all']['samplesheet'])['patient'].to_numpy()
-Samples = pd.read_csv(config['all']['samplesheet'])['sample'].to_numpy()
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
-        expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz", patient = Patients)
+        expand(output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
 #+++++++++++++++++++++++++++++++++++++++++ 1 RUN SAREK VARIANT CALLING +++++++++++++++++++++++++++++++++++++++++++++
 # 1.1 Run Sarek variant calling
@@ -92,14 +91,15 @@ rule CNA_analysis:
     input:
         bam= output_dir + "sarek/{patient}/preprocessing/mapped/{patient}_tumor1/{patient}_tumor1.sorted.bam"
     output:
-        sample_dir = temp(directory(output_dir + "copywriter/{binsize}bp/{patient}/")),
-        QDNAseq = output_dir + 'QDNAseq/{binsize}bp/{patient}/data/QDNAseq_Segments.Rds',
-        Segments = output_dir + 'QDNAseq/{binsize}bp/{patient}/data/QDNAseq_Segments.txt'
+        sample_dir = temp(directory(output_dir + "copywriter/{binsize}/{patient}/")),
+        QDNAseq = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segmented.Rds',
+        Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt',
+        Profile = output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf',
     params:
         genome = 'hg38',
         cores = config['CopyWriteR']['cores'],
-        outdir=lambda wildcards: f"{output_dir}/copywriter/{wildcards.binsize}bp/",
+        outdir=lambda wildcards: f"{output_dir}/copywriter/{wildcards.binsize}/",
     conda:
-        "envs/copywritr.yaml"
+        "envs/copywriter.yaml"
     script:
         'scripts/CNA_analysis.R'

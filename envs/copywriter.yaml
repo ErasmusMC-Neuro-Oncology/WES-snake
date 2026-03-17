@@ -6,7 +6,7 @@ dependencies:
   - r-tidyr
   - r-tibble
   - bioconductor-copywriter
-  - bioconductor-qdnaseq.hg38
+  - bioconductor-qdnaseq
   - bioconductor-dnacopy
   - bioconductor-biobase
   - bioconductor-genomicranges

@@ -17,9 +17,11 @@
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # 0.1  Load packages
 #-------------------------------------------------------------------------------
+if(!'QDNAseq.hg38' %in% installed.packages()){devtools::install_github("asntech/QDNAseq.hg38@main")}
 suppressMessages(library(dplyr))
 suppressMessages(library(CopywriteR))
 suppressMessages(library(QDNAseq))
+suppressMessages(library(QDNAseq.hg38))
 suppressMessages(library(Biobase))
 suppressMessages(library(GenomicRanges))
 
@@ -35,22 +37,25 @@ if(exists("snakemake")){
     outdir <- snakemake@params[["outdir"]]
     sample_dir <- snakemake@output[["sample_dir"]]
     QDNAseq_output <- snakemake@output[["QDNAseq"]]
-    Segments_output <- snakemake@output[["Segments"]]  
+    Segments_output <- snakemake@output[["Segments"]]
+    Profile_output <- snakemake@output[["Profile"]]  
 }else{
-    input_bam <- 'output/sarek/MINT12/preprocessing/mapped/MINT12_tumor1/MINT12_tumor1.sorted.bam'
-    sample <- 'MINT12_tumor1'
-    sample_dir <- 'output/copywriter/MINT12_tumor1/'
-    QDNAseq_output <- 'output/QDNAseq/MINT12/data/QDNAseq_Segments_100000bp.Rds'
-    Segments_output <- 'output/QDNAseq/MINT12/data/QDNAseq_Segments_100000bp.Rds'
+    input_bam <- 'output/sarek/MINT20/preprocessing/mapped/MINT20_tumor1/MINT20_tumor1.sorted.bam'
+    sample <- 'MINT20_tumor1'
+    sample_dir <- 'output/copywriter/1000kbp/MINT20_tumor1/'
+    QDNAseq_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
+    Segments_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
+    Profiles_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
     genome <- 'hg38'
-    binsize <- '100000'
+    binsize <- '1000kbp'
     cores <- 10
-    outdir <- 'output/copywriter/'
+    outdir <- 'output/copywriter/1000kbp/'
 }
 
 #-------------------------------------------------------------------------------
 # 1.1 Define CopyWritR parameters
 #-------------------------------------------------------------------------------
+binsize <- format(as.integer(gsub('kbp','',binsize))*1000, scientific = F)
 # Create annotation files
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 preCopywriteR(output.folder = outdir,
@@ -70,6 +75,7 @@ sample.control <- data.frame(samples = input_bam,controls=input_bam)
 #-------------------------------------------------------------------------------
 # 2.1 Run CopyWritR
 #-------------------------------------------------------------------------------
+if(!dir.exists(sample_dir)){dir.create(sample_dir)}
 # Run CopyWriteR
 if(!"input.Rdata" %in% list.files(paste0(sample_dir,"/CNAprofiles/"))){
     unlink(paste0(sample_dir,"/CNAprofiles/"), recursive = TRUE)
@@ -91,6 +97,7 @@ read_counts <- read.delim(paste0(sample_dir,'/CNAprofiles/read_counts.txt'))
 kbbin <- substring(binsize,1,nchar(binsize)-3)
 load(paste0(outdir,genome,"_",kbbin,"kb_chr/GC_mappability.rda"))
 
+
 # create dataframe containing fdata fields
 fData_all <-
     cbind(as.data.frame(seqnames(GC.mappa.grange)),
@@ -99,7 +106,8 @@ fData_all <-
 # create features as row names
 rownames(fData_all) <- paste0(fData_all$value,":",fData_all$start,"-",fData_all$end)
 
-bins <- getBinAnnotations(as.integer(kbbin))
+bins <- getBinAnnotations(as.integer(kbbin), genome="hg38")
+
 pData_bins <- pData(bins)
 features_bins <- paste0('chr',rownames(pData_bins))
 # remove weird features from bin data
@@ -138,6 +146,8 @@ features <- intersect(rownames(bins),rownames(counts))
 
 QDNAseqCopyNumbers <- new("QDNAseqReadCounts",bins=bins[features,],counts=as.matrix(counts[features,]),phenodata=phenodata)
 
+
+
 #-------------------------------------------------------------------------------
 # 4.1 Perform QDNAseq normalizations
 #-------------------------------------------------------------------------------
@@ -149,9 +159,48 @@ corrected <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, map
     segmentBins() %>%
     normalizeSegmentedBins()
 
+
+#-------------------------------------------------------------------------------
+# 4.2 Plot QDNAseq profile and callBins
+#-------------------------------------------------------------------------------
+pdf(Profiles_output, width = 6 , height = 5)
+pdf('CNA_profile_MINT20_1000kbp.pdf', width = 6 , height = 5)
+plot(corrected)
+dev.off()
+
+#-------------------------------------------------------------------------------
+# 4.3 Retrieve segments
+#-------------------------------------------------------------------------------
+# Fetch segments and calculate their values
+Segments <- fData(corrected) %>%
+    mutate(seg.mean =assayData(corrected)$segmented[,1]) %>%
+    filter(!is.na(seg.mean)) %>%
+    arrange(chromosome, start) %>%
+  group_by(chromosome) %>%
+  mutate(group = cumsum(seg.mean != lag(seg.mean, default = dplyr::first(seg.mean)))) %>%
+  group_by(chromosome, group) %>%
+  summarise(
+    loc.start = min(start),
+    loc.end   = max(end),
+    num.mark  = n(),
+    seg.mean  = dplyr::first(seg.mean),
+    .groups = "drop"
+  ) %>%
+    mutate(
+        chrom_order = case_when(
+            chromosome %in% c("X","x") ~ 23,
+            chromosome %in% c("Y","y") ~ 24,
+            TRUE ~ as.numeric(chromosome)),
+        ID = sampleNames(corrected),
+        chrom = paste0('chr',chromosome)) %>%
+  arrange(chrom_order, loc.start) %>%
+    select(ID, chrom, loc.start, loc.end, num.mark, seg.mean) 
+
 #-------------------------------------------------------------------------------
 # 5.1 Write to file
 #-------------------------------------------------------------------------------
+# Save QDNAseq object
 saveRDS(corrected,QDNAseq_output)
 
-exportBins(corrected,'test.bed', format = 'bed', type = 'segments')
+# Save segments
+write.table(Segments, Segments_output, sep = '\t',quote = F, row.names = F)

@@ -16,4 +16,4 @@ sarek:
 
 CopyWriteR:
     cores: 10 # number of cores
-    binsizes: ['100000','1000000'] # CopyWriteR binsize (default=100kbp and 1000kbp)
+    binsizes: ['100kbp','1000kbp'] # CopyWriteR binsize (default=100kbp and 1000kbp)
