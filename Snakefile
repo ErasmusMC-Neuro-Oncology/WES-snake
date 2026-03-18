@@ -21,10 +21,10 @@ rule Sarek:
         config['all']['samplesheet']
     output:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
-        recal = temp(directory(output_dir + "sarek/{patient}/preprocessing/recalibrated/")),
+        mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
         md = temp(directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/")),
-        sorted_cram = temp(output_dir + "sarek/{patient}/preprocessing/mapped/{patient}_tumor1/{patient}_tumor1.sorted.cram"),
-        sorted_bam = output_dir + "sarek/{patient}/preprocessing/mapped/{patient}_tumor1/{patient}_tumor1.sorted.bam",
+        recal_cram = temp(output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram"),
+        recal_bam = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam",
         vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"
     threads: 2
     resources:
@@ -37,7 +37,7 @@ rule Sarek:
         genome = 'GATK.GRCh38',
         profile = "singularity",
         tools = "mutect2,merge",
-        reference = config['sarek']['reference'],
+        Mutect2_params = 'params/mutect2_params.json',
         targets = config['sarek']['targetregions'],
         intervals = config['sarek']['interval_padding'],
         HMF_PON = config['sarek']['HMF_PON'],
@@ -53,6 +53,7 @@ rule Sarek:
         nextflow -log {log} run nf-core/sarek -r 3.8.1 \
            -profile {params.profile} \
            -work-dir {params.workdir} \
+           -c {params.Mutect2_params} \
            -resume \
               --input {output.samplesheet} \
               --outdir {params.outdir} \
@@ -68,11 +69,10 @@ rule Sarek:
               --vep \
               --bcftools_annotations {params.HMF_PON} \
               --save_mapped \
-              --wes \
-              --mutect2_extra_args "--genotype-germline-sites true --genotype-pon-sites true"
+              --wes
 
         # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
-        samtools view -b -o {output.sorted_bam} {output.sorted_cram}
+        samtools view -b -o {output.recal_bam} {output.recal_cram}
         
         # Clean cache and intermediate files upon completion but keep on failure
         status=$?
@@ -89,7 +89,7 @@ rule Sarek:
 # 2.1 Run CopywriteR, Normalize with QDNAseq and export results
 rule CNA_analysis:
     input:
-        bam= output_dir + "sarek/{patient}/preprocessing/mapped/{patient}_tumor1/{patient}_tumor1.sorted.bam"
+        bam= output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam"
     output:
         sample_dir = temp(directory(output_dir + "copywriter/{binsize}/{patient}/")),
         QDNAseq = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segmented.Rds',
@@ -103,3 +103,45 @@ rule CNA_analysis:
         "envs/copywriter.yaml"
     script:
         'scripts/CNA_analysis.R'
+
+
+#+++++++++++++++++++++++++++++++++++++++++ 3 DISTINGUISH GERMLINE-SOMATIC +++++++++++++++++++++++++++++++++++++++++++++
+# 3.1 Run PureCN to call tumor purity/ploidy, classify variants and calculate CCF         
+rule PureCN:
+    input:
+        vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz",        
+        Segments = output_dir + 'QDNAseq/100kbp/{patient}/data/QDNAseq_Segments.txt'
+    output:
+        intervals = output_dir + 'PureCN/{patient}/baits_hg19_intervals.txt'
+        
+    params:
+        genome = 'hg38',
+        outdir = output_dir + 'PureCN/{patient}/',
+        ref = config['PureCN']['ref'],
+        targets = config['sarek']['targetregions']
+    conda:
+        "envs/purecn.yaml"
+    shell:
+        """
+        # Find PureCN installation
+        PureCN_lib=$CONDA_PREFIX/lib/R/library/PureCN/extdata
+
+        # Create intervals file
+        Rscript $PURECN/IntervalFile.R \
+        --in-file {params.targets} \ 
+        --fasta {params.ref} \
+        --out-file {output.intervals} \
+        --off-target \
+        --genome {params.genome}
+        
+        # Run PureCN
+        Rscript $PureCN_lib/PureCN.R \
+        --out {params.output_dir} \
+        --sampleid {patient} \
+        --segfile {input.Segments} \
+        --vcf {input.vcf} \
+        --genome {params.genome}
+        """
+        
+        
+

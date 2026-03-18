@@ -10,7 +10,7 @@
 # Usage: 
 #
 # TODO:
-# 1) 
+# 1) Add PON corrections
 #
 # History:
 #  13-03-2026: File creation
@@ -30,7 +30,7 @@ suppressMessages(library(GenomicRanges))
 #-------------------------------------------------------------------------------
 if(exists("snakemake")){
     input_bam <- snakemake@input[["bam"]]
-    sample <- snakemake@wildcards[["sample"]]
+    sample <- snakemake@wildcards[["patient"]]
     genome <- snakemake@params[["genome"]]
     binsize <- snakemake@wildcards[["binsize"]]
     cores <- snakemake@params[["cores"]]
@@ -44,7 +44,7 @@ if(exists("snakemake")){
     sample <- 'MINT20_tumor1'
     sample_dir <- 'output/copywriter/1000kbp/MINT20_tumor1/'
     QDNAseq_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
-    Segments_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
+    Segments_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.txt'
     Profiles_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
     genome <- 'hg38'
     binsize <- '1000kbp'
@@ -97,7 +97,6 @@ read_counts <- read.delim(paste0(sample_dir,'/CNAprofiles/read_counts.txt'))
 kbbin <- substring(binsize,1,nchar(binsize)-3)
 load(paste0(outdir,genome,"_",kbbin,"kb_chr/GC_mappability.rda"))
 
-
 # create dataframe containing fdata fields
 fData_all <-
     cbind(as.data.frame(seqnames(GC.mappa.grange)),
@@ -146,8 +145,6 @@ features <- intersect(rownames(bins),rownames(counts))
 
 QDNAseqCopyNumbers <- new("QDNAseqReadCounts",bins=bins[features,],counts=as.matrix(counts[features,]),phenodata=phenodata)
 
-
-
 #-------------------------------------------------------------------------------
 # 4.1 Perform QDNAseq normalizations
 #-------------------------------------------------------------------------------
@@ -164,7 +161,6 @@ corrected <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, map
 # 4.2 Plot QDNAseq profile and callBins
 #-------------------------------------------------------------------------------
 pdf(Profiles_output, width = 6 , height = 5)
-pdf('CNA_profile_MINT20_1000kbp.pdf', width = 6 , height = 5)
 plot(corrected)
 dev.off()
 

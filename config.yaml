@@ -6,14 +6,13 @@ all:
 
 sarek:
   workdir: '/data/jurriaan/sarek/work/' # directory to save sarek working dir
-  reference: '/data/Resources/reference/igenomes/UCSC/hg38/BWAIndex/genome.fa' # Reference genome location
   targetregions : "/data/Resources/target_regions/S31285117_Regions.bed" # Exome regions
   interval_padding: 100 # region padding around capture regions
-  gnomAD : "/data/Resources/gnomad/hg38/af-only-gnomad.hg38.vcf.gz" # Mutect2 germline resource w population frequencies
-  dbSNP: "/data/Resources/dbSNP/hg38/GCF_000001405.40.vcf.gz" # SNP database for germline calibration score
-  COSMIC: "/data/Resources/COSMIC/hg38/Cosmic_GenomeScreensMutant_v103_GRCh38.vcf.gz" # Path to COSMIC annotations
   HMF_PON: "/data/Resources/HMF/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
 
 CopyWriteR:
     cores: 10 # number of cores
     binsizes: ['100kbp','1000kbp'] # CopyWriteR binsize (default=100kbp and 1000kbp)
+
+PureCN:
+    ref: '/data/Resources/reference/igenomes/UCSC/hg38/BWAIndex/genome.fa' 

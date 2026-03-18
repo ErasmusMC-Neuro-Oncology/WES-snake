@@ -1,0 +1,5 @@
+process{
+    withName:"MUTECT2" {
+        ext.args = { "--genotype-germline-sites true --genotype-pon-sites true"}
+    }
+}
