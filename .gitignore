@@ -17,3 +17,6 @@ output/
 .Rhistory*
 .nextflow*
 samplesheet.csv
+*.pdf
+*.png
+*.txt

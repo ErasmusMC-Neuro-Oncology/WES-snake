@@ -6,13 +6,14 @@ all:
 
 sarek:
   workdir: '/data/jurriaan/sarek/work/' # directory to save sarek working dir
-  targetregions : "/data/Resources/target_regions/S31285117_Regions.bed" # Exome regions
+  targetregions : "/home/jurriaan/mnt/neuro-genomic-1-ro/resources/target_regions/S31285117_Regions.bed" # Exome regions
   interval_padding: 100 # region padding around capture regions
-  HMF_PON: "/data/Resources/HMF/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
+  HMF_PON: "/home/jurriaan/mnt/neuro-genomic-1-ro/resources/HMF/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
 
 CopyWriteR:
     cores: 10 # number of cores
     binsizes: ['100kbp','1000kbp'] # CopyWriteR binsize (default=100kbp and 1000kbp)
+    cytobands: '/home/jurriaan/mnt/neuro-genomic-1-ro/resources/cytobands/hg38/cytoBand.txt'
 
 PureCN:
-    ref: '/data/Resources/reference/igenomes/UCSC/hg38/BWAIndex/genome.fa' 
+    ref: '/home/jurriaan/mnt/neuro-genomic-1-ro/resources/reference/igenomes/UCSC/hg38/BWAIndex/genome.fa' 

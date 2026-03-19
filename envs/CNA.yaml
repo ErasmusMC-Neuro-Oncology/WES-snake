@@ -10,6 +10,7 @@ dependencies:
   - bioconductor-dnacopy
   - bioconductor-biobase
   - bioconductor-genomicranges
-  - bioconductor-clonality
+  - bioconductor-ace
   - r-devtools
+  - r-fields
 

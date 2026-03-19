@@ -8,6 +8,7 @@ output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
 Patients = pd.read_csv(config['all']['samplesheet'])['patient'].to_numpy()
+Patients = ['MINT23']
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
@@ -54,7 +55,7 @@ rule Sarek:
            -profile {params.profile} \
            -work-dir {params.workdir} \
            -c {params.Mutect2_params} \
-           -resume \
+           -resume false \
               --input {output.samplesheet} \
               --outdir {params.outdir} \
               --genome {params.genome} \
@@ -71,9 +72,6 @@ rule Sarek:
               --save_mapped \
               --wes
 
-        # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
-        samtools view -b -o {output.recal_bam} {output.recal_cram}
-        
         # Clean cache and intermediate files upon completion but keep on failure
         status=$?
         if [ $status -eq 0 ]; then
@@ -82,25 +80,39 @@ rule Sarek:
         echo "Sarek failed"
         fi
         
+        # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
+        samtools view -b -o {output.recal_bam} {output.recal_cram}
+        
+        
+        
         """
 
 
 #+++++++++++++++++++++++++++++++++++++++++ 2 PERFORM CNA ANALYSIS +++++++++++++++++++++++++++++++++++++++++++++
-# 2.1 Run CopywriteR, Normalize with QDNAseq and export results
+# 2.1 Run CopywriteR, QDNAseq, ACE, CNH calculate stats and export results
 rule CNA_analysis:
     input:
         bam= output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam"
     output:
         sample_dir = temp(directory(output_dir + "copywriter/{binsize}/{patient}/")),
         QDNAseq = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segmented.Rds',
-        Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt',
         Profile = output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf',
+        Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt',
+        Segments_igv = temp(output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.igv'),
+        Called = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_calls.txt',
+        CNA_stats = output_dir + 'QDNAseq/{binsize}/{patient}/data/CNA_stats.txt',
+        ACE_results = output_dir + 'ACE/{binsize}/{patient}/ACE_fits.txt',
+        ACE_matrix = output_dir + 'ACE/{binsize}/{patient}/ACE_matrixplot.pdf',
+        CNH_results = output_dir + 'CNH/{binsize}/{patient}/CNH_results.txt',
+        CNH_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_plot.pdf',
+        CNH_error_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_errorplot.pdf',
     params:
         genome = 'hg38',
         cores = config['CopyWriteR']['cores'],
+        cytobands = config['CopyWriteR']['cytobands'],
         outdir=lambda wildcards: f"{output_dir}/copywriter/{wildcards.binsize}/",
     conda:
-        "envs/copywriter.yaml"
+        "envs/CNA.yaml"
     script:
         'scripts/CNA_analysis.R'
 
