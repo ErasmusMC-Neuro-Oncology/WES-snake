@@ -8,7 +8,7 @@ output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
 Patients = pd.read_csv(config['all']['samplesheet'])['patient'].to_numpy()
-Patients = ['MINT23']
+Patients = ['MINT03'] 
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
@@ -22,9 +22,9 @@ rule Sarek:
         config['all']['samplesheet']
     output:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
-        mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
-        md = temp(directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/")),
-        recal_cram = temp(output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram"),
+        mapped = directory(output_dir + "sarek/{patient}/preprocessing/mapped/"),
+        md = directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/"),
+        recal_cram = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram",
         recal_bam = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam",
         vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"
     threads: 2
@@ -55,7 +55,7 @@ rule Sarek:
            -profile {params.profile} \
            -work-dir {params.workdir} \
            -c {params.Mutect2_params} \
-           -resume false \
+           -resume \
               --input {output.samplesheet} \
               --outdir {params.outdir} \
               --genome {params.genome} \
@@ -89,7 +89,7 @@ rule Sarek:
 
 
 #+++++++++++++++++++++++++++++++++++++++++ 2 PERFORM CNA ANALYSIS +++++++++++++++++++++++++++++++++++++++++++++
-# 2.1 Run CopywriteR, QDNAseq, ACE, CNH calculate stats and export results
+# 2.1 Run CopywriteR, QDNAseq, ACE, CNH, calculate stats and export results
 rule CNA_analysis:
     input:
         bam= output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam"
@@ -110,6 +110,8 @@ rule CNA_analysis:
         genome = 'hg38',
         cores = config['CopyWriteR']['cores'],
         cytobands = config['CopyWriteR']['cytobands'],
+        ACE_purity_penalty = config['ACE']['penalty'],
+        ACE_ploidy_penalty = config['ACE']['penploidy'],
         outdir=lambda wildcards: f"{output_dir}/copywriter/{wildcards.binsize}/",
     conda:
         "envs/CNA.yaml"
@@ -124,8 +126,7 @@ rule PureCN:
         vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz",        
         Segments = output_dir + 'QDNAseq/100kbp/{patient}/data/QDNAseq_Segments.txt'
     output:
-        intervals = output_dir + 'PureCN/{patient}/baits_hg19_intervals.txt'
-        
+        intervals = temp(output_dir + 'PureCN/{patient}/baits_hg19_intervals.txt'),
     params:
         genome = 'hg38',
         outdir = output_dir + 'PureCN/{patient}/',
@@ -139,7 +140,7 @@ rule PureCN:
         PureCN_lib=$CONDA_PREFIX/lib/R/library/PureCN/extdata
 
         # Create intervals file
-        Rscript $PURECN/IntervalFile.R \
+        Rscript $PureCN_lib/IntervalFile.R \
         --in-file {params.targets} \ 
         --fasta {params.ref} \
         --out-file {output.intervals} \
@@ -152,6 +153,7 @@ rule PureCN:
         --sampleid {patient} \
         --segfile {input.Segments} \
         --vcf {input.vcf} \
+        --intervals {output.intervals} \
         --genome {params.genome}
         """
         

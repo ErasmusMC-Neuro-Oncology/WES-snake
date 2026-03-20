@@ -35,6 +35,9 @@ if(exists("snakemake")){
     binsize <- snakemake@wildcards[["binsize"]]
     cores <- snakemake@params[["cores"]]
     outdir <- snakemake@params[["outdir"]]
+    ACE_purity_penalty <- snakemake@params[["ACE_purity_penalty"]]
+    ACE_ploidy_penalty <- snakemake@params[["ACE_ploidy_penalty"]]
+    cytobands <- snakemake@params[["cytobands"]]
     sample_dir <- snakemake@output[["sample_dir"]]
     QDNAseq_output <- snakemake@output[["QDNAseq"]]
     Profile_output <- snakemake@output[["Profile"]]  
@@ -54,6 +57,8 @@ if(exists("snakemake")){
     sample_dir <- 'output/copywriter/1000kbp/MINT20_tumor1/'
     QDNAseq_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
     Segments_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.txt'
+    ACE_purity_penalty <- 0
+    ACE_ploidy_penalty <- 0.5
     Segments_igv_output <-paste0(getwd(), '/output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.igv')
     Profiles_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
     CNH_results <- paste0(getwd(),'/output/CNH/1000kbp/MINT20/CNH_results.txt')
@@ -64,6 +69,9 @@ if(exists("snakemake")){
     cores <- 10
     outdir <- 'output/copywriter/1000kbp/'
     cytobands <- '/data/Resources/cytobands/hg38/cytoBand.txt'
+
+    read_counts <- read.delim('output/copywriter/1000kbp/MINT20_tumor1/CNAprofiles/read_counts.txt')
+    
 }
 
 #-------------------------------------------------------------------------------
@@ -85,6 +93,7 @@ load(file = file.path(outdir, paste0(genome,"_",kbbin,"kb_chr"), "blacklist.rda"
 bp.param <- SnowParam(workers = cores, type = "SOCK")
 # Create sample df
 sample.control <- data.frame(samples = input_bam,controls=input_bam)
+
 #-------------------------------------------------------------------------------
 # 2.1 Run CopyWritR
 #-------------------------------------------------------------------------------
@@ -169,7 +178,6 @@ corrected <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, map
     segmentBins() %>%
     normalizeSegmentedBins()
 
-
 #-------------------------------------------------------------------------------
 # 4.2 Plot QDNAseq profile and callBins
 #-------------------------------------------------------------------------------
@@ -208,7 +216,9 @@ Segments <- fData(corrected) %>%
 #-------------------------------------------------------------------------------
 # 4.4 Run ACE
 #-------------------------------------------------------------------------------
-ACE_results <- ACE::squaremodel(corrected, QDNAseqobjectsample = T)
+ACE_results <- ACE::squaremodel(corrected, QDNAseqobjectsample = T,
+                                penalty = as.numeric(ACE_purity_penalty),
+                                penploidy = as.numeric(ACE_ploidy_penalty)) 
 
 # Save matrix plot
 pdf(ACE_matrix_output)

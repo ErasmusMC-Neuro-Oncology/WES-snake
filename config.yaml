@@ -15,5 +15,9 @@ CopyWriteR:
     binsizes: ['100kbp','1000kbp'] # CopyWriteR binsize (default=100kbp and 1000kbp)
     cytobands: '/home/jurriaan/mnt/neuro-genomic-1-ro/resources/cytobands/hg38/cytoBand.txt'
 
+ACE:
+    penalty : 0 # Penalty for low purity solutions
+    penploidy : 0.5 # penalty for high ploidy solutions
+
 PureCN:
     ref: '/home/jurriaan/mnt/neuro-genomic-1-ro/resources/reference/igenomes/UCSC/hg38/BWAIndex/genome.fa' 
