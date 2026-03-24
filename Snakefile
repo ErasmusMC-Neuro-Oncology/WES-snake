@@ -22,12 +22,12 @@ rule Sarek:
         config['all']['samplesheet']
     output:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
-        mapped = directory(output_dir + "sarek/{patient}/preprocessing/mapped/"),
-        md = directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/"),
-        recal_cram = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram",
+        mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
+        md = temp(directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/")),
+        recal_cram = temp(output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram"),
         recal_bam = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam",
         vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"
-    threads: 2
+    threads: 8
     resources:
         mem_mb=100000
     conda:
@@ -51,25 +51,20 @@ rule Sarek:
         # Subset samplesheet
         awk -F',' '$1=="patient" || $1=="{wildcards.patient}"' {input} > {output.samplesheet}
 
-        nextflow -log {log} run nf-core/sarek -r 3.8.1 \
+        nextflow -log {log} run nf-core/sarek -r dev \
            -profile {params.profile} \
            -work-dir {params.workdir} \
-           -c {params.Mutect2_params} \
            -resume \
+           -c {params.Mutect2_params} \
               --input {output.samplesheet} \
               --outdir {params.outdir} \
               --genome {params.genome} \
               --tools {params.tools} \
               --intervals {params.targets} \
               --interval_padding {params.intervals} \
-              --max_cpus {threads} \
-              --fastp_max_cpus {threads} \
-              --bwa_max_cpus {threads} \
-              --gatk_max_cpus {threads} \
               --max_memory '{resources.mem_mb} MB' \
-              --vep \
               --bcftools_annotations {params.HMF_PON} \
-              --save_mapped \
+              --save_mapped  \
               --wes
 
         # Clean cache and intermediate files upon completion but keep on failure
@@ -79,11 +74,9 @@ rule Sarek:
         else
         echo "Sarek failed"
         fi
-        
+
         # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
         samtools view -b -o {output.recal_bam} {output.recal_cram}
-        
-        
         
         """
 
