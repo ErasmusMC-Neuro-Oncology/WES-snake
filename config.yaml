@@ -1,23 +1,23 @@
 ---
 all:
-    samplesheet: '/home/jurriaan/Projects/MINT/data/samplesheets/samplesheet_WES.csv' # specify sarek samplesheet: must contain patient, sample, status, lane, fastq_1 and fastq_2
-    data_dir: "/home/jurriaan/mnt/neuro-genomic-1-ro/MINT/WES_data/"  # Specify main data directory
-    output_dir: "/home/jurriaan/Projects/WES-snake/output/"                  # Specify main output directory   
+    samplesheet: '/mnt/nonc0001/data/jurriaan/MINT/samplesheet_WES.csv' # specify sarek samplesheet: must contain patient, sample, status, lane, fastq_1 and fastq_2
+    data_dir: "/mnt/nonc0001/data/jurriaan/MINT/fastq/"  # Specify main data directory
+    output_dir: "/mnt/nonc0001/data/jurriaan/MINT/output/"                  # Specify main output directory   
 
 sarek:
-  workdir: '/data/jurriaan/sarek/work/' # directory to save sarek working dir
-  targetregions : "/home/jurriaan/mnt/neuro-genomic-1-ro/resources/target_regions/S31285117_Regions.bed" # Exome regions
+  workdir: '/mnt/nonc0001/data/jurriaan/MINT/.sarek/work/' # directory to save sarek working dir
+  targetregions : "/mnt/nonc0001/data/jurriaan/Resources/target_regions/S31285117_Regions.bed" # Exome regions
   interval_padding: 100 # region padding around capture regions
-  HMF_PON: "/home/jurriaan/mnt/neuro-genomic-1-ro/resources/HMF/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
+  HMF_PON: "/mnt/nonc0001/data/jurriaan/Resources/HMF/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
 
 CopyWriteR:
     cores: 10 # number of cores
     binsizes: ['100kbp','1000kbp'] # CopyWriteR binsize (default=100kbp and 1000kbp)
-    cytobands: '/home/jurriaan/mnt/neuro-genomic-1-ro/resources/cytobands/hg38/cytoBand.txt'
+    cytobands: '/mnt/nonc0001/data/jurriaan/Resources/cytobands/hg38/cytoBand.txt'
 
 ACE:
     penalty : 0 # Penalty for low purity solutions
     penploidy : 0.5 # penalty for high ploidy solutions
 
 PureCN:
-    ref: '/home/jurriaan/mnt/neuro-genomic-1-ro/resources/reference/igenomes/UCSC/hg38/BWAIndex/genome.fa' 
+    ref: '/mnt/nonc0001/data/jurriaan/Resources/resources/reference/igenomes/UCSC/hg38/BWAIndex/genome.fa' 

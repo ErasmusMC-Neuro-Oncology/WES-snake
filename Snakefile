@@ -8,7 +8,7 @@ output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
 Patients = pd.read_csv(config['all']['samplesheet'])['patient'].to_numpy()
-Patients = ['MINT03'] 
+Patients = ['MINT03']
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
@@ -25,12 +25,14 @@ rule Sarek:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
         md = temp(directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/")),
-        recal_cram = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram",
+        recal_cram = temp(output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram"),
         recal_bam = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam",
         vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"
     threads: 8
     resources:
-        mem_mb=500000
+        mem_mb=50000,
+        gpu=0,
+        runtime='30h'
     conda:
         "envs/nextflow.yaml"
     log:
@@ -135,7 +137,7 @@ rule PureCN:
 
         # Create intervals file
         Rscript $PureCN_lib/IntervalFile.R \
-        --in-file {params.targets} \ 
+        --in-file {params.targets} \
         --fasta {params.ref} \
         --out-file {output.intervals} \
         --off-target \
@@ -150,6 +152,3 @@ rule PureCN:
         --intervals {output.intervals} \
         --genome {params.genome}
         """
-        
-        
-
