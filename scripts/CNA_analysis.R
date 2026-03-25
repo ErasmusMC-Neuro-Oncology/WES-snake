@@ -113,7 +113,7 @@ if(!"input.Rdata" %in% list.files(paste0(sample_dir,"/CNAprofiles/"))){
 read_counts <- read.delim(paste0(sample_dir,'/CNAprofiles/read_counts.txt'))
 
 #-------------------------------------------------------------------------------
-# 2.1 Prepare QDNAseq objects
+# 3.2 Prepare QDNAseq objects
 #-------------------------------------------------------------------------------
 #---------- create bins file  ----------
 kbbin <- substring(binsize,1,nchar(binsize)-3)

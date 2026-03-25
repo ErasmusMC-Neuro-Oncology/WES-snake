@@ -13,7 +13,8 @@ Patients = ['MINT03']
 # 0.2 specify target rules
 rule all:
     input:
-        expand(output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
+        expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz", patient = Patients)
+        #expand(output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
 #+++++++++++++++++++++++++++++++++++++++++ 1 RUN SAREK VARIANT CALLING +++++++++++++++++++++++++++++++++++++++++++++
 # 1.1 Run Sarek variant calling
@@ -24,12 +25,12 @@ rule Sarek:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
         md = temp(directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/")),
-        recal_cram = temp(output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram"),
+        recal_cram = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram",
         recal_bam = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam",
         vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"
     threads: 8
     resources:
-        mem_mb=100000
+        mem_mb=500000
     conda:
         "envs/nextflow.yaml"
     log:
@@ -67,6 +68,9 @@ rule Sarek:
               --save_mapped  \
               --wes
 
+        # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
+        samtools view -b -o {output.recal_bam} {output.recal_cram}
+        
         # Clean cache and intermediate files upon completion but keep on failure
         status=$?
         if [ $status -eq 0 ]; then
@@ -74,9 +78,6 @@ rule Sarek:
         else
         echo "Sarek failed"
         fi
-
-        # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
-        samtools view -b -o {output.recal_bam} {output.recal_cram}
         
         """
 
