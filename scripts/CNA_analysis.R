@@ -60,7 +60,7 @@ if(exists("snakemake")){
     ACE_purity_penalty <- 0
     ACE_ploidy_penalty <- 0.5
     Segments_igv_output <-paste0(getwd(), '/output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.igv')
-    Profiles_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
+    Profile_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
     CNH_results <- paste0(getwd(),'/output/CNH/1000kbp/MINT20/CNH_results.txt')
     CNH_plot <- paste0(getwd(),'/output/CNH/1000kbp/MINT20/CNH_plot.pdf')
     CNH_error_plot <- paste0(getwd(),'/output/CNH/1000kbp/MINT20/CNH_error_plot.pdf')
@@ -181,7 +181,7 @@ corrected <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, map
 #-------------------------------------------------------------------------------
 # 4.2 Plot QDNAseq profile and callBins
 #-------------------------------------------------------------------------------
-pdf(Profiles_output, width = 6 , height = 5)
+pdf(Profile_output, width = 6 , height = 5)
 plot(corrected)
 dev.off()
 
@@ -299,7 +299,7 @@ CNA_stats <- data.frame(
 # 4.6 Run CNH
 #-------------------------------------------------------------------------------
 exportBins(corrected, file = Segments_igv_output, format = 'igv')
-system(paste0('cd scripts/CNH/CopyNumberHeterogeneityTGAC/HeterogeneityCodetgac/ ; Rscript R/Main.R ', Segments_igv_output,' 0.2 ',CNH_results,' ',CNH_plot,' ', CNH_error_plot))
+system(paste0('cd scripts/CNH/CopyNumberHeterogeneityTGAC/HeterogeneityCodetgac/ ; Rscript R/Main.R ', Segments_igv_output,' 0.2 ',CNH_results_output,' ',CNH_plot_output,' ', CNH_error_plot_output))
 
 #-------------------------------------------------------------------------------
 # 5.1 Write to file
