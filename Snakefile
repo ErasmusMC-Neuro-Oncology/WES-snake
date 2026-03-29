@@ -8,19 +8,34 @@ output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
 Patients = pd.read_csv(config['all']['samplesheet'])['patient'].to_numpy()
-Patients = ['MINT03']
+
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
-        expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz", patient = Patients)
-        #expand(output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
+        expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz", patient = Patients),
+        expand(output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
 #+++++++++++++++++++++++++++++++++++++++++ 1 RUN SAREK VARIANT CALLING +++++++++++++++++++++++++++++++++++++++++++++
-# 1.1 Run Sarek variant calling
+# 1.1 Download Sarek
+rule Download_Sarek:
+    output:
+        ".nf-core-sarek/"
+    params:
+        singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/"
+    conda:
+        "envs/nextflow.yaml"
+    shell:
+        """
+	export NXF_SINGULARITY_CACHEDIR={params.singularity_dir}        
+	nf-core pipelines download --outdir {output} --container-system singularity --compress none -r dev sarek
+        """
+
+# 1.2 Run
 rule Sarek:
     input:
-        config['all']['samplesheet']
+        samplesheet = config['all']['samplesheet'],
+        sarek = ".nf-core-sarek/"
     output:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
@@ -38,6 +53,7 @@ rule Sarek:
     log:
         "logs/sarek/{patient}/nextflow_"+datetime.now().strftime("%Y_%m_%d_%H%M%S")+".log"
     params:
+        version = 'dev',
         genome = 'GATK.GRCh38',
         profile = "singularity",
         tools = "mutect2,merge",
@@ -45,19 +61,20 @@ rule Sarek:
         targets = config['sarek']['targetregions'],
         intervals = config['sarek']['interval_padding'],
         HMF_PON = config['sarek']['HMF_PON'],
+        singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/",
         workdir=lambda wildcards: f"{config['sarek']['workdir']}/{wildcards.patient}",
         outdir=lambda wildcards: f"{output_dir}/sarek/{wildcards.patient}",
     shell:
         """
         export NXF_WORK={params.workdir}
-        
-        # Subset samplesheet
-        awk -F',' '$1=="patient" || $1=="{wildcards.patient}"' {input} > {output.samplesheet}
+        export NXF_SINGULARITY_CACHEDIR={params.singularity_dir}
 
-        nextflow -log {log} run nf-core/sarek -r dev \
+        # Subset samplesheet
+        awk -F',' '$1=="patient" || $1=="{wildcards.patient}"' {input.samplesheet} > {output.samplesheet}
+
+        nextflow -log {log} run .nf-core-sarek/{params.version}/ \
            -profile {params.profile} \
            -work-dir {params.workdir} \
-           -resume \
            -c {params.Mutect2_params} \
               --input {output.samplesheet} \
               --outdir {params.outdir} \
@@ -102,6 +119,10 @@ rule CNA_analysis:
         CNH_results = output_dir + 'CNH/{binsize}/{patient}/CNH_results.txt',
         CNH_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_plot.pdf',
         CNH_error_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_errorplot.pdf',
+    resources:
+        mem_mb=50000,
+        gpu=0,
+        runtime='30h'
     params:
         genome = 'hg38',
         cores = config['CopyWriteR']['cores'],

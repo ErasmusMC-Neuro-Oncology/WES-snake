@@ -20,3 +20,5 @@ samplesheet.csv
 *.pdf
 *.png
 *.txt
+.sarek/
+.nf-core-sarek/

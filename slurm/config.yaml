@@ -1,7 +1,7 @@
 executor: slurm
 restart-times: 0
 
-jobs: 40
+jobs: 20
 max-jobs-per-second: 10
 max-status-checks-per-second: 10
 local-cores: 1
@@ -15,6 +15,6 @@ use-singularity: "False"
 rerun-incomplete: 'True'
 
 default-resources:
-    mem_mb=50000
-    runtime= '30:00:00'
-    slurm_extra = "--gres=gpu:0 --nodelist=gpu001"
+    mem_mb: 50000
+    runtime: 3000
+    gpu: 0
