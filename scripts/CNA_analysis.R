@@ -44,7 +44,7 @@ if(exists("snakemake")){
     Segments_output <- snakemake@output[["Segments"]]
     CNA_stats_output <- snakemake@output[["CNA_stats"]]
     Segments_igv_output <- snakemake@output[["Segments_igv"]]
-    called_output <- snakemake@output[["called"]]
+    Called_output <- snakemake@output[["called"]]
     ACE_results_output <- snakemake@output[["ACE_results"]]
     ACE_matrix_output <- snakemake@output[["ACE_matrix"]]
     CNH_results_output <- snakemake@output[["CNH_results"]]

@@ -1,21 +1,34 @@
 configfile: "config.yaml"
 from datetime import datetime
 import pandas as pd
+import os
 #+++++++++++++++++++++++++++++++++++++++ 0 PREPARE WILDCARDS AND TARGET ++++++++++++++++++++++++++++++++++++++++++++
 # 0.1 Prepare variables and wildcards
-data_dir = config["all"]["data_dir"]
 output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
-Patients = pd.read_csv(config['all']['samplesheet'])['patient'].to_numpy()
+Patients = pd.read_csv('samplesheet.csv')['patient'].unique() if os.path.isfile('samplesheet.csv') else []
 
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
-        expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz", patient = Patients),
+        'samplesheet.csv',
         expand(output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
+#++++++++++++++++++++++++++++++++++++++++++++ 0 CREATE SAMPLESHEET ++++++++++++++++++++++++++++++++++++++++++++++++
+rule Create_Samplesheet:
+    params:
+        data_dir = config['all']['data_dir'],
+        sample_overview = '../data/MINT_db.xlsx',
+    output:
+        'samplesheet.csv'
+    conda:
+        'envs/R.yaml'
+    script:
+        'scripts/Create_Samplesheet_MINT.R'
+
+        
 #+++++++++++++++++++++++++++++++++++++++++ 1 RUN SAREK VARIANT CALLING +++++++++++++++++++++++++++++++++++++++++++++
 # 1.1 Download Sarek
 rule Download_Sarek:
@@ -34,14 +47,14 @@ rule Download_Sarek:
 # 1.2 Run
 rule Sarek:
     input:
-        samplesheet = config['all']['samplesheet'],
+        samplesheet = 'samplesheet.csv',
         sarek = ".nf-core-sarek/"
     output:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
         md = temp(directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/")),
         recal_cram = temp(output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram"),
-        recal_bam = output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam",
+        recal_bam = temp(output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam"),
         vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"
     threads: 8
     resources:
@@ -84,6 +97,8 @@ rule Sarek:
               --interval_padding {params.intervals} \
               --max_memory '{resources.mem_mb} MB' \
               --bcftools_annotations {params.HMF_PON} \
+              --bcftools_annotations_tbi {params.HMF_PON}.tbi \
+              --bcftools_header_lines {params.HMF_PON}.header.txt \
               --save_mapped  \
               --wes
 
@@ -120,7 +135,7 @@ rule CNA_analysis:
         CNH_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_plot.pdf',
         CNH_error_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_errorplot.pdf',
     resources:
-        mem_mb=50000,
+        mem_mb=100000,
         gpu=0,
         runtime='30h'
     params:

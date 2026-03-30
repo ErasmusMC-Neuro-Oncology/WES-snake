@@ -10,9 +10,9 @@ latency-wait: 60
 slurm-logdir: "logs/slurm/"
 
 
-use-conda: "True"
-use-singularity: "False"
-rerun-incomplete: 'True'
+use-conda: True
+use-singularity: False
+rerun-incomplete: True
 
 default-resources:
     mem_mb: 50000
