@@ -8,7 +8,7 @@ local-cores: 1
 latency-wait: 60
 
 slurm-logdir: "logs/slurm/"
-
+slurm-jobname: 'WES'
 
 use-conda: True
 use-singularity: False

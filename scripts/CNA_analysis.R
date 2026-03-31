@@ -34,9 +34,9 @@ if(exists("snakemake")){
     genome <- snakemake@params[["genome"]]
     binsize <- snakemake@wildcards[["binsize"]]
     cores <- snakemake@params[["cores"]]
-    outdir <- snakemake@params[["outdir"]]
     ACE_purity_penalty <- snakemake@params[["ACE_purity_penalty"]]
     ACE_ploidy_penalty <- snakemake@params[["ACE_ploidy_penalty"]]
+    CNH_path <- snakemake@params[["CNH_path"]]
     cytobands <- snakemake@params[["cytobands"]]
     sample_dir <- snakemake@output[["sample_dir"]]
     QDNAseq_output <- snakemake@output[["QDNAseq"]]
@@ -44,7 +44,7 @@ if(exists("snakemake")){
     Segments_output <- snakemake@output[["Segments"]]
     CNA_stats_output <- snakemake@output[["CNA_stats"]]
     Segments_igv_output <- snakemake@output[["Segments_igv"]]
-    Called_output <- snakemake@output[["called"]]
+    Called_output <- snakemake@output[["Called"]]
     ACE_results_output <- snakemake@output[["ACE_results"]]
     ACE_matrix_output <- snakemake@output[["ACE_matrix"]]
     CNH_results_output <- snakemake@output[["CNH_results"]]
@@ -52,25 +52,24 @@ if(exists("snakemake")){
     CNH_error_plot_output <- snakemake@output[["CNH_error_plot"]]
     
 }else{
-    input_bam <- 'output/sarek/MINT20/preprocessing/mapped/MINT20_tumor1/MINT20_tumor1.sorted.bam'
-    sample <- 'MINT20_tumor1'
-    sample_dir <- 'output/copywriter/1000kbp/MINT20_tumor1/'
-    QDNAseq_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
-    Segments_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.txt'
+    input_bam <- '../output/sarek/MINT12/preprocessing/recalibrated/MINT12_tumor1/MINT12_tumor1.recal.bam'
+    sample <- 'MINT12_tumor1'
+    sample_dir <- '../output/copywriter/1000kbp/MINT12_tumor1/'
+    QDNAseq_output <- '../output/QDNAseq/1000kbp/MINT12/data/QDNAseq_Segments.Rds'
+    Segments_output <- '../output/QDNAseq/1000kbp/MINT12/data/QDNAseq_Segments.txt'
     ACE_purity_penalty <- 0
     ACE_ploidy_penalty <- 0.5
-    Segments_igv_output <-paste0(getwd(), '/output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.igv')
-    Profile_output <- 'output/QDNAseq/1000kbp/MINT20/data/QDNAseq_Segments.Rds'
-    CNH_results <- paste0(getwd(),'/output/CNH/1000kbp/MINT20/CNH_results.txt')
-    CNH_plot <- paste0(getwd(),'/output/CNH/1000kbp/MINT20/CNH_plot.pdf')
-    CNH_error_plot <- paste0(getwd(),'/output/CNH/1000kbp/MINT20/CNH_error_plot.pdf')
+    CNH_path <- 'scripts/CNH/'
+
+    Segments_igv_output <-paste0(getwd(), '/../output/QDNAseq/1000kbp/MINT12/data/QDNAseq_Segments.igv')
+    Profile_output <- '../output/QDNAseq/1000kbp/MINT12/data/QDNAseq_Segments.Rds'
+    CNH_results_output <- paste0(getwd(),'/../output/CNH/1000kbp/MINT12/CNH_results.txt')
+    CNH_plot_output <- paste0(getwd(),'/../output/CNH/1000kbp/MINT12/CNH_plot.pdf')
+    CNH_error_plot_output <- paste0(getwd(),'/../output/CNH/1000kbp/MINT12/CNH_error_plot.pdf')
     genome <- 'hg38'
     binsize <- '1000kbp'
-    cores <- 10
-    outdir <- 'output/copywriter/1000kbp/'
+    cores <- 1
     cytobands <- '/data/Resources/cytobands/hg38/cytoBand.txt'
-
-    read_counts <- read.delim('output/copywriter/1000kbp/MINT20_tumor1/CNAprofiles/read_counts.txt')
     
 }
 
@@ -78,9 +77,10 @@ if(exists("snakemake")){
 # 1.1 Define CopyWritR parameters
 #-------------------------------------------------------------------------------
 binsize <- format(as.integer(gsub('kbp','',binsize))*1000, scientific = F)
+
 # Create annotation files
-if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-preCopywriteR(output.folder = outdir,
+if(!dir.exists(sample_dir)) dir.create(sample_dir, recursive = TRUE)
+preCopywriteR(output.folder = sample_dir,
               bin.size = as.integer(binsize),
               ref.genome = genome,
               prefix = "chr")
@@ -88,7 +88,7 @@ preCopywriteR(output.folder = outdir,
 # get number of kb bins
 kbbin <- substring(binsize,1,nchar(binsize)-3)
 # Load annotation files
-load(file = file.path(outdir, paste0(genome,"_",kbbin,"kb_chr"), "blacklist.rda"))
+load(file = file.path(sample_dir, paste0(genome,"_",kbbin,"kb_chr"), "blacklist.rda"))
 # set number of workers
 bp.param <- SnowParam(workers = cores, type = "SOCK")
 # Create sample df
@@ -97,27 +97,22 @@ sample.control <- data.frame(samples = input_bam,controls=input_bam)
 #-------------------------------------------------------------------------------
 # 2.1 Run CopyWritR
 #-------------------------------------------------------------------------------
-if(!dir.exists(sample_dir)){dir.create(sample_dir)}
 # Run CopyWriteR
-if(!"input.Rdata" %in% list.files(paste0(sample_dir,"/CNAprofiles/"))){
-    unlink(paste0(sample_dir,"/CNAprofiles/"), recursive = TRUE)
-    CopywriteR(sample.control = sample.control,
-               destination.folder = sample_dir,
-               reference.folder = file.path(outdir, paste0(genome,"_",kbbin,"kb_chr")),
-               bp.param=bp.param)
-}
+CopywriteR(sample.control = sample.control,
+           destination.folder = sample_dir,
+           reference.folder = file.path(sample_dir, paste0(genome,"_",kbbin,"kb_chr")),
+           bp.param=bp.param)
 
 #-------------------------------------------------------------------------------
 # 3.1 Parse Copywriter output
 #-------------------------------------------------------------------------------
 read_counts <- read.delim(paste0(sample_dir,'/CNAprofiles/read_counts.txt'))
-
 #-------------------------------------------------------------------------------
 # 3.2 Prepare QDNAseq objects
 #-------------------------------------------------------------------------------
 #---------- create bins file  ----------
 kbbin <- substring(binsize,1,nchar(binsize)-3)
-load(paste0(outdir,genome,"_",kbbin,"kb_chr/GC_mappability.rda"))
+load(paste0(sample_dir,'/',genome,"_",kbbin,"kb_chr/GC_mappability.rda"))
 
 # create dataframe containing fdata fields
 fData_all <-
@@ -229,7 +224,10 @@ dev.off()
 # 4.5 Run CGH call
 #-------------------------------------------------------------------------------
 # Run CGHcall and extract calls
-called <- callBins(corrected, nclass = 5) %>% CGHbase::calls() %>% as.data.frame() %>% tibble::rownames_to_column()
+called <- callBins(corrected, nclass = 5) %>% CGHbase::calls()
+
+# Save calls as df
+called <- called %>% as.data.frame() %>% tibble::rownames_to_column()
 colnames(called) <- c('bin','call')
 
 #-------------------------------------------------------------------------------
@@ -299,7 +297,8 @@ CNA_stats <- data.frame(
 # 4.6 Run CNH
 #-------------------------------------------------------------------------------
 exportBins(corrected, file = Segments_igv_output, format = 'igv')
-system(paste0('cd scripts/CNH/CopyNumberHeterogeneityTGAC/HeterogeneityCodetgac/ ; Rscript R/Main.R ', Segments_igv_output,' 0.2 ',CNH_results_output,' ',CNH_plot_output,' ', CNH_error_plot_output))
+system(paste0('cd ',CNH_path, ' ; Rscript R/Main.R ', Segments_igv_output,' 0.2 ',CNH_results_output,' ',CNH_plot_output,' ', CNH_error_plot_output))
+
 
 #-------------------------------------------------------------------------------
 # 5.1 Write to file

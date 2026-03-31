@@ -5,3 +5,4 @@ dependencies:
   - nextflow==25.10.4
   - nf-core
   - samtools
+  - bcftools

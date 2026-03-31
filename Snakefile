@@ -52,10 +52,11 @@ rule Sarek:
     output:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
-        md = temp(directory(output_dir + "sarek/{patient}/preprocessing/markduplicates/")),
-        recal_cram = temp(output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.cram"),
-        recal_bam = temp(output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam"),
-        vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"
+        recal = temp(directory(output_dir + "sarek/{patient}/preprocessing/recalibrated/")),
+        md_cram = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.cram"),
+        md_bam = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"),
+        vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"),
+        vcf_annotated = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz"
     threads: 8
     resources:
         mem_mb=50000,
@@ -96,14 +97,15 @@ rule Sarek:
               --intervals {params.targets} \
               --interval_padding {params.intervals} \
               --max_memory '{resources.mem_mb} MB' \
-              --bcftools_annotations {params.HMF_PON} \
-              --bcftools_annotations_tbi {params.HMF_PON}.tbi \
-              --bcftools_header_lines {params.HMF_PON}.header.txt \
               --save_mapped  \
               --wes
 
         # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
-        samtools view -b -o {output.recal_bam} {output.recal_cram}
+        samtools view -b -o {output.md_bam} {output.md_cram}
+
+        # Add HMF PON annotation
+        bcftools annotate {output.vcf} -a {params.HMF_PON} -c INFO -O z -o {output.vcf_annotated}
+        bcftools index -t {output.vcf_annotated}
         
         # Clean cache and intermediate files upon completion but keep on failure
         status=$?
@@ -120,7 +122,7 @@ rule Sarek:
 # 2.1 Run CopywriteR, QDNAseq, ACE, CNH, calculate stats and export results
 rule CNA_analysis:
     input:
-        bam= output_dir + "sarek/{patient}/preprocessing/recalibrated/{patient}_tumor1/{patient}_tumor1.recal.bam"
+        bam= output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"
     output:
         sample_dir = temp(directory(output_dir + "copywriter/{binsize}/{patient}/")),
         QDNAseq = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segmented.Rds',
@@ -135,7 +137,7 @@ rule CNA_analysis:
         CNH_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_plot.pdf',
         CNH_error_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_errorplot.pdf',
     resources:
-        mem_mb=100000,
+        mem_mb=10000,
         gpu=0,
         runtime='30h'
     params:
@@ -144,7 +146,7 @@ rule CNA_analysis:
         cytobands = config['CopyWriteR']['cytobands'],
         ACE_purity_penalty = config['ACE']['penalty'],
         ACE_ploidy_penalty = config['ACE']['penploidy'],
-        outdir=lambda wildcards: f"{output_dir}/copywriter/{wildcards.binsize}/",
+        CNH_path = config['CNH']['path']
     conda:
         "envs/CNA.yaml"
     script:
@@ -155,7 +157,7 @@ rule CNA_analysis:
 # 3.1 Run PureCN to call tumor purity/ploidy, classify variants and calculate CCF         
 rule PureCN:
     input:
-        vcf = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz",        
+        vcf =  output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
         Segments = output_dir + 'QDNAseq/100kbp/{patient}/data/QDNAseq_Segments.txt'
     output:
         intervals = temp(output_dir + 'PureCN/{patient}/baits_hg19_intervals.txt'),
