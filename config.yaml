@@ -6,7 +6,7 @@ all:
 
 sarek:
   workdir: '/trinity/home/r115502/MINT/WES-snake/.sarek/work/' # directory to save sarek working dir
-  targetregions : "/trinity/home/r115502/Resources/target_regions/S31285117_Regions.bed" # Exome regions
+  targetregions : "/trinity/home/r115502/Resources/target_regions/S31285117_Regions_Annotated.bed" # Exome regions
   interval_padding: 100 # region padding around capture regions
   HMF_PON: "/trinity/home/r115502/Resources/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
 

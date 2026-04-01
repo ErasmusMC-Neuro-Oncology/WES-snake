@@ -154,13 +154,15 @@ rule CNA_analysis:
 
 
 #+++++++++++++++++++++++++++++++++++++++++ 3 DISTINGUISH GERMLINE-SOMATIC +++++++++++++++++++++++++++++++++++++++++++++
-# 3.1 Run PureCN to call tumor purity/ploidy, classify variants and calculate CCF         
+# 3.1 Run PureCN to call tumor purity/ploidy, classify variants and calculate CCF  
 rule PureCN:
     input:
         vcf =  output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
         Segments = output_dir + 'QDNAseq/100kbp/{patient}/data/QDNAseq_Segments.txt'
     output:
         intervals = temp(output_dir + 'PureCN/{patient}/baits_hg19_intervals.txt'),
+        PureCN_rds = output_dir + 'PureCN/{patient}/{patient}_tumor1.rds',
+        variants = output_dir + 'PureCN/{patient}/{patient}_tumor1_variants.csv'
     params:
         genome = 'hg38',
         outdir = output_dir + 'PureCN/{patient}/',
@@ -189,4 +191,10 @@ rule PureCN:
         --vcf {input.vcf} \
         --intervals {output.intervals} \
         --genome {params.genome}
+
+        # Calculate signatures/statistics
+         Rscript $PureCN_lib/Dx.R \
+        --rds {output.PureCN_rds} \
+        --callable {params.targets} \
+        --signatures
         """

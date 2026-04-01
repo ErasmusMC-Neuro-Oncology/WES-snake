@@ -3,4 +3,5 @@ channels:
   - bioconda
 dependencies:
   - bioconductor-purecn
+  - r-deconstructsigs
   - r-optparse
