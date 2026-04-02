@@ -3,5 +3,8 @@ channels:
   - bioconda
 dependencies:
   - bioconductor-purecn
+  - bioconductor-txdb.hsapiens.ucsc.hg38.knowngene
+  - bioconductor-org.hs.eg.db
+  - bioconductor-bsgenome.hsapiens.ucsc.hg38
   - r-deconstructsigs
   - r-optparse

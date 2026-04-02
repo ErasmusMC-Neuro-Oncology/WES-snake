@@ -8,13 +8,12 @@ output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
 Patients = pd.read_csv('samplesheet.csv')['patient'].unique() if os.path.isfile('samplesheet.csv') else []
-
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
-        'samplesheet.csv',
-        expand(output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
+        'sampledata/SampleData_WES.txt'
+        #expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
 #++++++++++++++++++++++++++++++++++++++++++++ 0 CREATE SAMPLESHEET ++++++++++++++++++++++++++++++++++++++++++++++++
 rule Create_Samplesheet:
@@ -33,7 +32,7 @@ rule Create_Samplesheet:
 # 1.1 Download Sarek
 rule Download_Sarek:
     output:
-        ".nf-core-sarek/"
+        temp(".nf-core-sarek/")
     params:
         singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/"
     conda:
@@ -44,7 +43,7 @@ rule Download_Sarek:
 	nf-core pipelines download --outdir {output} --container-system singularity --compress none -r dev sarek
         """
 
-# 1.2 Run
+# 1.2 Run Sarek
 rule Sarek:
     input:
         samplesheet = 'samplesheet.csv',
@@ -56,7 +55,8 @@ rule Sarek:
         md_cram = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.cram"),
         md_bam = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"),
         vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"),
-        vcf_annotated = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz"
+        vcf_annotated = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
+        on_target_coverage = output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt"
     threads: 8
     resources:
         mem_mb=50000,
@@ -154,22 +154,26 @@ rule CNA_analysis:
 
 
 #+++++++++++++++++++++++++++++++++++++++++ 3 DISTINGUISH GERMLINE-SOMATIC +++++++++++++++++++++++++++++++++++++++++++++
-# 3.1 Run PureCN to call tumor purity/ploidy, classify variants and calculate CCF  
+# 3.1 Run PureCN to call tumor purity/ploidy, classify variants and calculate CCF
 rule PureCN:
     input:
         vcf =  output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
-        Segments = output_dir + 'QDNAseq/100kbp/{patient}/data/QDNAseq_Segments.txt'
+        Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt'
     output:
-        intervals = temp(output_dir + 'PureCN/{patient}/baits_hg19_intervals.txt'),
-        PureCN_rds = output_dir + 'PureCN/{patient}/{patient}_tumor1.rds',
-        variants = output_dir + 'PureCN/{patient}/{patient}_tumor1_variants.csv'
+        intervals = temp(output_dir + 'PureCN/{binsize}/{patient}/baits_hg19_intervals.txt'),
+        PureCN_rds = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.rds',
+        variants = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',
+        TMB = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',
+        signatures = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv'
     params:
         genome = 'hg38',
-        outdir = output_dir + 'PureCN/{patient}/',
-        ref = config['PureCN']['ref'],
-        targets = config['sarek']['targetregions']
+        ref = config['all']['ref'],
+        targets = config['sarek']['targetregions'],
+        min_af = config['PureCN']['min_af'],
+        min_bq = config['PureCN']['min_bq'],        
+        outdir=lambda wildcards: f"{output_dir}/PureCN/{wildcards.binsize}/{wildcards.patient}",
     conda:
-        "envs/purecn.yaml"
+        "envs/PureCN.yaml"
     shell:
         """
         # Find PureCN installation
@@ -185,16 +189,41 @@ rule PureCN:
         
         # Run PureCN
         Rscript $PureCN_lib/PureCN.R \
-        --out {params.output_dir} \
-        --sampleid {patient} \
+        --out {params.outdir} \
+        --sampleid {wildcards.patient}_tumor1 \
         --segfile {input.Segments} \
         --vcf {input.vcf} \
         --intervals {output.intervals} \
-        --genome {params.genome}
-
+        --genome {params.genome} \
+        --min-af {params.min_af} \
+        --min-base-quality {params.min_bq}
+        
         # Calculate signatures/statistics
          Rscript $PureCN_lib/Dx.R \
         --rds {output.PureCN_rds} \
         --callable {params.targets} \
-        --signatures
+        --signatures \
+        --force
         """
+
+
+#++++++++++++++++++++++++++++++++++++++++++++++++ 4 MERGE SAMPLE DATA +++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Create samplesheet with stats
+rule Create_SampleData:
+    input:
+        on_target_coverage = expand(output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt",patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        CNA_stats = expand(output_dir + 'QDNAseq/{binsize}/{patient}/data/CNA_stats.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        ACE_results = expand(output_dir + 'ACE/{binsize}/{patient}/ACE_fits.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        CNH_results = expand(output_dir + 'CNH/{binsize}/{patient}/CNH_results.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        TMB = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        signatures = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes'])
+    output:
+        SampleData = 'sampledata/SampleData_WES.txt'
+    conda:
+        "envs/R.yaml"
+    script:
+        'scripts/Create_SampleData.R'
+        
+    
+    
+        
