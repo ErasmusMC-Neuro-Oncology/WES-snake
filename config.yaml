@@ -2,6 +2,7 @@
 all:
     samplesheet: '/trinity/home/r115502/MINT/WES-snake/samplesheet.csv' # specify sarek samplesheet: must contain patient, sample, status, lane, fastq_1 and fastq_2
     data_dir: "/trinity/home/r115502/MINT/fastq/"  # Specify main data directory
+    data_dir2: "/trinity/home/r115502/MINT/fastq_batch2/"  # Specify main data directory
     output_dir: "/trinity/home/r115502/MINT/output/"                  # Specify main output directory
     ref: '/trinity/home/r115502/Resources/BWAIndex/genome.fa' # Path to reference genome
 

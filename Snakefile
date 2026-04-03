@@ -8,18 +8,25 @@ output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
 Patients = pd.read_csv('samplesheet.csv')['patient'].unique() if os.path.isfile('samplesheet.csv') else []
+
+samplesheet =  pd.read_csv('samplesheet.csv')
+Patients = samplesheet[samplesheet.fastq_1.str.contains('batch2')]['patient'].unique()
+
+
+
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
-        'sampledata/SampleData_WES.txt'
-        #expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
+        expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
 #++++++++++++++++++++++++++++++++++++++++++++ 0 CREATE SAMPLESHEET ++++++++++++++++++++++++++++++++++++++++++++++++
 rule Create_Samplesheet:
     params:
         data_dir = config['all']['data_dir'],
+        data_dir2 = config['all']['data_dir2'],
         sample_overview = '../data/MINT_db.xlsx',
+        sample_overview2 = '../data/1kuvre_fastq_list.csv',
     output:
         'samplesheet.csv'
     conda:
@@ -32,7 +39,7 @@ rule Create_Samplesheet:
 # 1.1 Download Sarek
 rule Download_Sarek:
     output:
-        temp(".nf-core-sarek/")
+        directory(".nf-core-sarek/")
     params:
         singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/"
     conda:
@@ -56,7 +63,7 @@ rule Sarek:
         md_bam = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"),
         vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"),
         vcf_annotated = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
-        on_target_coverage = output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt"
+        depth = output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt"
     threads: 8
     resources:
         mem_mb=50000,
@@ -211,19 +218,31 @@ rule PureCN:
 # Create samplesheet with stats
 rule Create_SampleData:
     input:
-        on_target_coverage = expand(output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt",patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        depth = expand(output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt",patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         CNA_stats = expand(output_dir + 'QDNAseq/{binsize}/{patient}/data/CNA_stats.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         ACE_results = expand(output_dir + 'ACE/{binsize}/{patient}/ACE_fits.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         CNH_results = expand(output_dir + 'CNH/{binsize}/{patient}/CNH_results.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         TMB = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         signatures = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes'])
     output:
-        SampleData = 'sampledata/SampleData_WES.txt'
+        SampleData = output_dir + 'sampledata/SampleData_WES.txt'
     conda:
         "envs/R.yaml"
     script:
         'scripts/Create_SampleData.R'
         
     
-    
+
+#++++++++++++++++++++++++++++++++++++++++++++++++ 5 PLOT SAMPLE DATA +++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Plot SampleData
+rule Plot_SampleData:
+    input:
+        SampleData = output_dir + 'sampledata/SampleData_WES.txt'
+    output:
+        Barplot_depth = output_dir + 'plots/Barplot_target_depth.pdf'
+    conda:
+        "envs/R.yaml"
+    script:
+        'scripts/Plot_SampleData.R'
+        
         
