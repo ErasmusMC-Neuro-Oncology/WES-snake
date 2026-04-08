@@ -53,8 +53,8 @@ rule Download_Sarek:
 # 1.2 Run Sarek
 rule Sarek:
     input:
-        samplesheet = 'samplesheet.csv',
-        sarek = ".nf-core-sarek/"
+        samplesheet = os.path.abspath('samplesheet.csv'),
+        sarek = os.path.abspath(".nf-core-sarek/")
     output:
         samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
@@ -66,22 +66,22 @@ rule Sarek:
         depth = output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt"
     threads: 8
     resources:
-        mem_mb=50000,
+        mem_mb=100000,
         gpu=0,
         runtime='30h'
     conda:
         "envs/nextflow.yaml"
     log:
-        "logs/sarek/{patient}/nextflow_"+datetime.now().strftime("%Y_%m_%d_%H%M%S")+".log"
+        os.path.abspath("logs/sarek/{patient}/nextflow_"+datetime.now().strftime("%Y_%m_%d_%H%M%S")+".log")
     params:
         version = 'dev',
         genome = 'GATK.GRCh38',
         profile = "singularity",
         tools = "mutect2,merge",
-        Mutect2_params = 'params/mutect2_params.json',
         targets = config['sarek']['targetregions'],
         intervals = config['sarek']['interval_padding'],
         HMF_PON = config['sarek']['HMF_PON'],
+        Mutect2_params = os.path.abspath('params/mutect2_params.json'),
         singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/",
         workdir=lambda wildcards: f"{config['sarek']['workdir']}/{wildcards.patient}",
         outdir=lambda wildcards: f"{output_dir}/sarek/{wildcards.patient}",
@@ -89,13 +89,15 @@ rule Sarek:
         """
         export NXF_WORK={params.workdir}
         export NXF_SINGULARITY_CACHEDIR={params.singularity_dir}
-
+	export NXF_CACHE_DIR={params.workdir}
+        
         # Subset samplesheet
         awk -F',' '$1=="patient" || $1=="{wildcards.patient}"' {input.samplesheet} > {output.samplesheet}
 
-        nextflow -log {log} run .nf-core-sarek/{params.version}/ \
+        nextflow -log {log} run {input.sarek}/{params.version}/ \
            -profile {params.profile} \
            -work-dir {params.workdir} \
+           -resume \
            -c {params.Mutect2_params} \
               --input {output.samplesheet} \
               --outdir {params.outdir} \
@@ -144,7 +146,7 @@ rule CNA_analysis:
         CNH_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_plot.pdf',
         CNH_error_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_errorplot.pdf',
     resources:
-        mem_mb=10000,
+        mem_mb=50000,
         gpu=0,
         runtime='30h'
     params:
