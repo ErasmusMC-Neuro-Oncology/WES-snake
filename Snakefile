@@ -9,30 +9,20 @@ output_dir = config["all"]["output_dir"]
 # Fetch Patient wildcards
 Patients = pd.read_csv('samplesheet.csv')['patient'].unique() if os.path.isfile('samplesheet.csv') else []
 
-samplesheet =  pd.read_csv('samplesheet.csv')
-Patients = samplesheet[samplesheet.fastq_1.str.contains('batch2')]['patient'].unique()
-
-
-
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
-        expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
+        expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz", patient = Patients)
 
 #++++++++++++++++++++++++++++++++++++++++++++ 0 CREATE SAMPLESHEET ++++++++++++++++++++++++++++++++++++++++++++++++
 rule Create_Samplesheet:
-    params:
-        data_dir = config['all']['data_dir'],
-        data_dir2 = config['all']['data_dir2'],
-        sample_overview = '../data/MINT_db.xlsx',
-        sample_overview2 = '../data/1kuvre_fastq_list.csv',
     output:
         'samplesheet.csv'
     conda:
         'envs/R.yaml'
     script:
-        'scripts/Create_Samplesheet_MINT.R'
+        'scripts/Create_Samplesheet_GLASS.R'
 
         
 #+++++++++++++++++++++++++++++++++++++++++ 1 RUN SAREK VARIANT CALLING +++++++++++++++++++++++++++++++++++++++++++++
