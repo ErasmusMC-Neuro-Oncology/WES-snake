@@ -1,6 +1,7 @@
 ---
 all:
     samplesheet: '/trinity/home/r115502/GLASS/WES-snake/samplesheet.csv' # specify sarek samplesheet: must contain patient, sample, status, lane, fastq_1 and fastq_2
+    data_dir : "/trinity/home/r115502/GLASS/bam/" 
     output_dir: "/trinity/home/r115502/GLASS/output/"                  # Specify main output directory
     ref: '/trinity/home/r115502/Resources/BWAIndex/genome.fa' # Path to reference genome
 

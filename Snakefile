@@ -2,18 +2,22 @@ configfile: "config.yaml"
 from datetime import datetime
 import pandas as pd
 import os
+import glob
 #+++++++++++++++++++++++++++++++++++++++ 0 PREPARE WILDCARDS AND TARGET ++++++++++++++++++++++++++++++++++++++++++++
 # 0.1 Prepare variables and wildcards
 output_dir = config["all"]["output_dir"]
-
+data_dir = config["all"]["data_dir"]
 # Fetch Patient wildcards
 Patients = pd.read_csv('samplesheet.csv')['patient'].unique() if os.path.isfile('samplesheet.csv') else []
+Tumors = list(set(['_'.join(pat.split('_')[:2]) for pat in Patients]))
 
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
-        expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz", patient = Patients)
+        expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz", patient = Patients),
+        expand(output_dir + 'QDNAseq/{binsize}/sWGS/{tumor}/data/QDNAseq_Segments_sWGS.txt',binsize = config['CopyWriteR']['binsizes'], tumor = Tumors),
+        expand(output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segmented.Rds',binsize = config['CopyWriteR']['binsizes'], patient = Patients),
 
 #++++++++++++++++++++++++++++++++++++++++++++ 0 CREATE SAMPLESHEET ++++++++++++++++++++++++++++++++++++++++++++++++
 rule Create_Samplesheet:
@@ -51,7 +55,6 @@ rule Sarek:
         recal = temp(directory(output_dir + "sarek/{patient}/preprocessing/recalibrated/")),
         md_cram = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.cram"),
         md_bam = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"),
-        vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"),
         vcf_annotated = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
         depth = output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt"
     threads: 8
@@ -75,6 +78,7 @@ rule Sarek:
         singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/",
         workdir=lambda wildcards: f"{config['sarek']['workdir']}/{wildcards.patient}",
         outdir=lambda wildcards: f"{output_dir}/sarek/{wildcards.patient}",
+        Mutect2_mode=lambda wildcards: "tumor1_vs_normal1" if "Paired" in wildcards.patient else "tumor1",
     shell:
         """
         export NXF_WORK={params.workdir}
@@ -96,14 +100,16 @@ rule Sarek:
               --intervals {params.targets} \
               --interval_padding {params.intervals} \
               --max_memory '{resources.mem_mb} MB' \
-              --save_mapped  \
+              --save_mapped \
               --wes
-
+        
         # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
         samtools view -b -o {output.md_bam} {output.md_cram}
+        
+         # Add HMF PON annotation
+        VCF={params.outdir}/annotation/mutect2/{wildcards.patient}_{params.Mutect2_mode}/{wildcards.patient}_{params.Mutect2_mode}.mutect2.filtered_snpEff_VEP.ann.vcf.gz
 
-        # Add HMF PON annotation
-        bcftools annotate {output.vcf} -a {params.HMF_PON} -c INFO -O z -o {output.vcf_annotated}
+        bcftools annotate $VCF -a {params.HMF_PON} -c INFO -O z -o {output.vcf_annotated}
         bcftools index -t {output.vcf_annotated}
         
         # Clean cache and intermediate files upon completion but keep on failure
@@ -118,12 +124,11 @@ rule Sarek:
 
 
 #+++++++++++++++++++++++++++++++++++++++++ 2 PERFORM CNA ANALYSIS +++++++++++++++++++++++++++++++++++++++++++++
-# 2.1 Run CopywriteR, QDNAseq, ACE, CNH, calculate stats and export results
+# 2.1 Run QDNAseq, ACE, CNH, calculate stats and export results
 rule CNA_analysis:
     input:
-        bam= output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"
+        bam=  output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"
     output:
-        sample_dir = temp(directory(output_dir + "copywriter/{binsize}/{patient}/")),
         QDNAseq = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segmented.Rds',
         Profile = output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf',
         Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt',
@@ -151,6 +156,24 @@ rule CNA_analysis:
     script:
         'scripts/CNA_analysis.R'
 
+
+rule CNA_analysis_sWGS:
+    input:
+        bam=  lambda wildcards: glob.glob(data_dir + 'sWGS/' + wildcards.tumor + '_*.bam')
+    output:
+        QDNAseq = output_dir + 'QDNAseq/{binsize}/sWGS/{tumor}/data/QDNAseq_Segmented_sWGS.Rds',
+        Profile = output_dir + 'QDNAseq/{binsize}/sWGS/{tumor}/plots/QDNAseq_segmented_profile_sWGS.pdf',
+        Segments = output_dir + 'QDNAseq/{binsize}/sWGS/{tumor}/data/QDNAseq_Segments_sWGS.txt',
+    resources:
+        mem_mb=50000,
+        gpu=0,
+        runtime='30h'
+    params:
+        genome = 'hg38',
+    conda:
+        "envs/CNA.yaml"
+    script:
+        'scripts/CNA_analysis_sWGS.R'
 
 #+++++++++++++++++++++++++++++++++++++++++ 3 DISTINGUISH GERMLINE-SOMATIC +++++++++++++++++++++++++++++++++++++++++++++
 # 3.1 Run PureCN to call tumor purity/ploidy, classify variants and calculate CCF
