@@ -27,3 +27,7 @@ CNH:
 PureCN:
     min_af: 0.1 # minimum allele frequency to include for SNV likelihoods
     min_bq: 20 # minimum base quality of variant position
+
+CNA_PON:
+    100kbp: '/trinity/home/r115502/Resources/PON/CNA_PON_100kbp_n3.Rds'
+    1000kbp: '/trinity/home/r115502/Resources/PON/CNA_PON_1000kbp_n3.Rds'

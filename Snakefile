@@ -9,15 +9,11 @@ output_dir = config["all"]["output_dir"]
 # Fetch Patient wildcards
 Patients = pd.read_csv('samplesheet.csv')['patient'].unique() if os.path.isfile('samplesheet.csv') else []
 
-samplesheet =  pd.read_csv('samplesheet.csv')
-Patients = samplesheet[samplesheet.fastq_1.str.contains('batch2')]['patient'].unique()
-
-
-
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
+        #expand(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam",patient=Patients)
         expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
 #++++++++++++++++++++++++++++++++++++++++++++ 0 CREATE SAMPLESHEET ++++++++++++++++++++++++++++++++++++++++++++++++
@@ -60,7 +56,7 @@ rule Sarek:
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
         recal = temp(directory(output_dir + "sarek/{patient}/preprocessing/recalibrated/")),
         md_cram = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.cram"),
-        md_bam = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"),
+        md_bam = output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam",
         vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"),
         vcf_annotated = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
         depth = output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt"
@@ -155,7 +151,8 @@ rule CNA_analysis:
         cytobands = config['CopyWriteR']['cytobands'],
         ACE_purity_penalty = config['ACE']['penalty'],
         ACE_ploidy_penalty = config['ACE']['penploidy'],
-        CNH_path = config['CNH']['path']
+        CNH_path = config['CNH']['path'],
+        PON = lambda wildcards: config['CNA_PON'][wildcards.binsize]
     conda:
         "envs/CNA.yaml"
     script:
@@ -232,8 +229,6 @@ rule Create_SampleData:
         "envs/R.yaml"
     script:
         'scripts/Create_SampleData.R'
-        
-    
 
 #++++++++++++++++++++++++++++++++++++++++++++++++ 5 PLOT SAMPLE DATA +++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Plot SampleData
