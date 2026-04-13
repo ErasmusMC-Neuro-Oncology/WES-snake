@@ -168,8 +168,6 @@ rule CNA_analysis_sWGS:
         mem_mb=50000,
         gpu=0,
         runtime='30h'
-    params:
-        genome = 'hg38',
     conda:
         "envs/CNA.yaml"
     script:

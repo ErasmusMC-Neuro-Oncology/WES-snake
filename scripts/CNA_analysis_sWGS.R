@@ -29,38 +29,36 @@ suppressMessages(library(GenomicRanges))
 #-------------------------------------------------------------------------------
 if(exists("snakemake")){
     input_bam <- snakemake@input[["bam"]]
-    genome <- snakemake@params[["genome"]]
     binsize <- snakemake@wildcards[["binsize"]]
     QDNAseq_output <- snakemake@output[["QDNAseq"]]
     Profile_output <- snakemake@output[["Profile"]]  
     Segments_output <- snakemake@output[["Segments"]]
-        
 }else{
-    input_bam <- '../output/sarek/MINT12/preprocessing/recalibrated/MINT12_tumor1/MINT12_tumor1.recal.bam'
+    input_bam <- '../bam/sWGS/104_R2_I2_S61_R1_001.bam'
     QDNAseq_output <- '../output/QDNAseq/1000kbp/MINT12/data/QDNAseq_Segments.Rds'
     Segments_output <- '../output/QDNAseq/1000kbp/MINT12/data/QDNAseq_Segments.txt'
     Profile_output <- '../output/QDNAseq/1000kbp/MINT12/data/QDNAseq_Segments.Rds'
-    genome <- 'hg38'
-    binsize <- '1000kbp'
+    binsize <- '100kbp'
 }
 
 #-------------------------------------------------------------------------------
 # 1.1 Read bam file
 #-------------------------------------------------------------------------------
-bins <- getBinAnnotations(as.integer(gsub('kbp','',binsize)), genome="hg38")
+binsize <- as.integer(gsub('kbp','',binsize))
+bins <- getBinAnnotations(binsize, genome='hg19')
 
-
-QDNAseqCopyNumbers <- binReadCounts(bins, bamfiles=input_bam, cache=TRUE)
+QDNAseqCopyNumbers <- binReadCounts(bins, bamfiles=input_bam)
 
 #-------------------------------------------------------------------------------
 # 2.1 Perform QDNAseq normalizations
 #-------------------------------------------------------------------------------
+
 corrected <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, mappability=FALSE, bases=FALSE , chromosomes=c('chrY','chrX','X','Y')) %>%
     estimateCorrection() %>%
     correctBins() %>%
     normalizeBins() %>%
     smoothOutlierBins() %>%
-    segmentBins() %>%
+    segmentBins(., undo.splits='sdundo', undo.SD=0.1, alpha=1e-20, transformFun="sqrt") %>%
     normalizeSegmentedBins()
 
 #-------------------------------------------------------------------------------
