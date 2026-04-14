@@ -176,6 +176,7 @@ rule PureCN:
         ref = config['all']['ref'],
         targets = config['sarek']['targetregions'],
         min_af = config['PureCN']['min_af'],
+        min_alt = config['PureCN']['min_alt'],
         min_bq = config['PureCN']['min_bq'],        
         outdir=lambda wildcards: f"{output_dir}/PureCN/{wildcards.binsize}/{wildcards.patient}",
     conda:
@@ -202,7 +203,8 @@ rule PureCN:
         --intervals {output.intervals} \
         --genome {params.genome} \
         --min-af {params.min_af} \
-        --min-base-quality {params.min_bq}
+        --min-base-quality {params.min_bq} \
+        --min-supporting-reads {params.min_alt}
         
         # Calculate signatures/statistics
          Rscript $PureCN_lib/Dx.R \
