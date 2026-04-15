@@ -13,6 +13,7 @@ Patients = pd.read_csv('samplesheet.csv')['patient'].unique() if os.path.isfile(
 # 0.2 specify target rules
 rule all:
     input:
+        output_dir + 'plots/Barplot_target_depth.pdf',
         #expand(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam",patient=Patients)
         expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
@@ -166,6 +167,7 @@ rule PureCN:
         vcf =  output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
         Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt'
     output:
+        vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/PureCN_{binsize}.vcf"),
         intervals = temp(output_dir + 'PureCN/{binsize}/{patient}/baits_hg19_intervals.txt'),
         PureCN_rds = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.rds',
         variants = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',
@@ -193,6 +195,9 @@ rule PureCN:
         --out-file {output.intervals} \
         --off-target \
         --genome {params.genome}
+
+        # Modify input vcf
+        python3 scripts/FilterVCF.py -i {input.vcf} -o {output.vcf}
         
         # Run PureCN
         Rscript $PureCN_lib/PureCN.R \

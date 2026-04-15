@@ -18,6 +18,7 @@
 # 0.1  Load packages
 #-------------------------------------------------------------------------------
 suppressMessages(library(dplyr))
+suppressMessages(library(ggplot2))
 suppressMessages(library(stringr))
 
 #-------------------------------------------------------------------------------
