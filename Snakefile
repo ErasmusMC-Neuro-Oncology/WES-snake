@@ -204,7 +204,7 @@ rule PureCN:
         --out {params.outdir} \
         --sampleid {wildcards.patient}_tumor1 \
         --segfile {input.Segments} \
-        --vcf {input.vcf} \
+        --vcf {output.vcf} \
         --intervals {output.intervals} \
         --genome {params.genome} \
         --min-af {params.min_af} \

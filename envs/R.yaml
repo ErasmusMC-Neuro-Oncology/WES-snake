@@ -9,4 +9,5 @@ dependencies:
   - r-tibble
   - r-ggplot2
   - r-optparse
+  - r-forcats
   
