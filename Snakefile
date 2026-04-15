@@ -8,11 +8,12 @@ output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
 Patients = pd.read_csv('samplesheet.csv')['patient'].unique() if os.path.isfile('samplesheet.csv') else []
-
+Patients = Patients[:10]
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
+        #'samplesheet.csv'
         #expand(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam",patient=Patients)
         expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
@@ -20,15 +21,12 @@ rule all:
 rule Create_Samplesheet:
     params:
         data_dir = config['all']['data_dir'],
-        data_dir2 = config['all']['data_dir2'],
-        sample_overview = '../data/MINT_db.xlsx',
-        sample_overview2 = '../data/1kuvre_fastq_list.csv',
     output:
         'samplesheet.csv'
     conda:
         'envs/R.yaml'
     script:
-        'scripts/Create_Samplesheet_MINT.R'
+        'scripts/Create_Samplesheet_CATNON.R'
 
         
 #+++++++++++++++++++++++++++++++++++++++++ 1 RUN SAREK VARIANT CALLING +++++++++++++++++++++++++++++++++++++++++++++
@@ -56,7 +54,7 @@ rule Sarek:
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
         recal = temp(directory(output_dir + "sarek/{patient}/preprocessing/recalibrated/")),
         md_cram = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.cram"),
-        md_bam = output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam",
+        md_bam = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"),
         vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.mutect2.filtered_snpEff_VEP.ann.vcf.gz"),
         vcf_annotated = output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
         depth = output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt"
@@ -166,6 +164,7 @@ rule PureCN:
         vcf =  output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
         Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt'
     output:
+        vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/PureCN_{binsize}.vcf"),
         intervals = temp(output_dir + 'PureCN/{binsize}/{patient}/baits_hg19_intervals.txt'),
         PureCN_rds = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.rds',
         variants = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',
@@ -176,7 +175,8 @@ rule PureCN:
         ref = config['all']['ref'],
         targets = config['sarek']['targetregions'],
         min_af = config['PureCN']['min_af'],
-        min_bq = config['PureCN']['min_bq'],        
+        min_alt = config['PureCN']['min_alt'],
+        min_bq = config['PureCN']['min_bq'],
         outdir=lambda wildcards: f"{output_dir}/PureCN/{wildcards.binsize}/{wildcards.patient}",
     conda:
         "envs/PureCN.yaml"
@@ -184,7 +184,7 @@ rule PureCN:
         """
         # Find PureCN installation
         PureCN_lib=$CONDA_PREFIX/lib/R/library/PureCN/extdata
-
+        
         # Create intervals file
         Rscript $PureCN_lib/IntervalFile.R \
         --in-file {params.targets} \
@@ -192,17 +192,21 @@ rule PureCN:
         --out-file {output.intervals} \
         --off-target \
         --genome {params.genome}
+
+        # Modify input vcf
+        python3 scripts/FilterVCF.py -i {input.vcf} -o {output.vcf}
         
         # Run PureCN
         Rscript $PureCN_lib/PureCN.R \
         --out {params.outdir} \
         --sampleid {wildcards.patient}_tumor1 \
         --segfile {input.Segments} \
-        --vcf {input.vcf} \
+        --vcf {output.vcf} \
         --intervals {output.intervals} \
         --genome {params.genome} \
         --min-af {params.min_af} \
-        --min-base-quality {params.min_bq}
+        --min-base-quality {params.min_bq} \
+        --min-supporting-reads {params.min_alt}
         
         # Calculate signatures/statistics
          Rscript $PureCN_lib/Dx.R \

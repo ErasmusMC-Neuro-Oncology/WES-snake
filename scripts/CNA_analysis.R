@@ -108,6 +108,7 @@ CopywriteR(sample.control = sample.control,
 # 3.1 Parse Copywriter output
 #-------------------------------------------------------------------------------
 read_counts <- read.delim(paste0(sample_dir,'/CNAprofiles/read_counts.txt'))
+
 #-------------------------------------------------------------------------------
 # 3.2 Prepare QDNAseq objects
 #-------------------------------------------------------------------------------
@@ -181,6 +182,7 @@ PON <- readRDS(input_PON)
 
 # Combine PON and tumor
 combined <- Biobase::combine(PON, corrected)
+
 # Perform correcrion
 corrected <- compareToReference(combined,c(0,1))
 sampleNames(corrected) <- gsub(' vs. ReferencePool','',sampleNames(corrected))
