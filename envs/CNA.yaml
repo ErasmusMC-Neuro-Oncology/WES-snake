@@ -12,6 +12,7 @@ dependencies:
   - bioconductor-biobase
   - bioconductor-genomicranges
   - bioconductor-ace
+  - bioconda::bioconductor-qdnaseq.hg19
   - r-devtools
   - r-fields
 

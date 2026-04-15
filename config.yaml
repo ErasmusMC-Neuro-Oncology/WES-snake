@@ -7,7 +7,7 @@ all:
 
 sarek:
   workdir: '/trinity/home/r115502/GLASS/WES-snake/.sarek/work/' # directory to save sarek working dir
-  targetregions : "/trinity/home/r115502/Resources/target_regions/S31285117_Regions_Annotated.bed" # Exome regions
+  targetregions : "/trinity/home/r115502/Resources/target_regions/S31285117_Regions.bed" # Exome regions
   interval_padding: 100 # region padding around capture regions
   HMF_PON: "/trinity/home/r115502/Resources/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
 
@@ -26,3 +26,4 @@ CNH:
 PureCN:
     min_af: 0.1 # minimum allele frequency to include for SNV likelihoods
     min_bq: 20 # minimum base quality of variant position
+    min_alt: 5 # minimum number of variant supporting reads

@@ -18,6 +18,7 @@ rule all:
         expand(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz", patient = Patients),
         expand(output_dir + 'QDNAseq/{binsize}/sWGS/{tumor}/data/QDNAseq_Segments_sWGS.txt',binsize = config['CopyWriteR']['binsizes'], tumor = Tumors),
         expand(output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segmented.Rds',binsize = config['CopyWriteR']['binsizes'], patient = Patients),
+        expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.rds',binsize = config['CopyWriteR']['binsizes'], patient = Patients)
 
 #++++++++++++++++++++++++++++++++++++++++++++ 0 CREATE SAMPLESHEET ++++++++++++++++++++++++++++++++++++++++++++++++
 rule Create_Samplesheet:
@@ -129,6 +130,7 @@ rule CNA_analysis:
     input:
         bam=  output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"
     output:
+        sample_dir = temp(directory(output_dir + "copywriter/{binsize}/{patient}/")),
         QDNAseq = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segmented.Rds',
         Profile = output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf',
         Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt',
@@ -178,8 +180,9 @@ rule CNA_analysis_sWGS:
 rule PureCN:
     input:
         vcf =  output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
-        Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt'
+        Segments = lambda wildcards: output_dir + 'QDNAseq/{binsize}/sWGS/' + '_'.join(wildcards.patient.split('_')[:2]) + '/data/QDNAseq_Segments_sWGS.txt'
     output:
+        vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/PureCN_{binsize}.vcf"),
         intervals = temp(output_dir + 'PureCN/{binsize}/{patient}/baits_hg19_intervals.txt'),
         PureCN_rds = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.rds',
         variants = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',
@@ -190,6 +193,7 @@ rule PureCN:
         ref = config['all']['ref'],
         targets = config['sarek']['targetregions'],
         min_af = config['PureCN']['min_af'],
+        min_alt = config['PureCN']['min_alt'],
         min_bq = config['PureCN']['min_bq'],        
         outdir=lambda wildcards: f"{output_dir}/PureCN/{wildcards.binsize}/{wildcards.patient}",
     conda:
@@ -206,17 +210,21 @@ rule PureCN:
         --out-file {output.intervals} \
         --off-target \
         --genome {params.genome}
+
+        # Modify input vcf
+        python3 scripts/FilterVCF.py -i {input.vcf} -o {output.vcf}
         
         # Run PureCN
         Rscript $PureCN_lib/PureCN.R \
         --out {params.outdir} \
         --sampleid {wildcards.patient}_tumor1 \
         --segfile {input.Segments} \
-        --vcf {input.vcf} \
+        --vcf {output.vcf} \
         --intervals {output.intervals} \
         --genome {params.genome} \
         --min-af {params.min_af} \
-        --min-base-quality {params.min_bq}
+        --min-base-quality {params.min_bq} \
+        --min-supporting-reads {params.min_alt}
         
         # Calculate signatures/statistics
          Rscript $PureCN_lib/Dx.R \
