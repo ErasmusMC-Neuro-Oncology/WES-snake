@@ -58,3 +58,7 @@ SampleData %>%
     theme_classic(base_size = 13) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + labs(x='Sample',y = 'Mean target depth')
 dev.off()
+
+
+SampleData %>% ggplot(aes(ACE_purity,PureCN_purity)) + geom_point()
+

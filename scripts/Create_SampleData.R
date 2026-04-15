@@ -27,6 +27,7 @@ if(exists("snakemake")){
     input_CNA_stats <- snakemake@input[["CNA_stats"]]
     input_ACE_results <- snakemake@input[["ACE_results"]]
     input_CNH_results <- snakemake@input[["CNH_results"]]
+    input_PureCN <- snakemake@input[["PureCN_purity"]]
     input_TMB <- snakemake@input[["TMB"]]
     input_signatures <- snakemake@input[["signatures"]]
     output_SampleData <- snakemake@output[["SampleData"]]
@@ -35,26 +36,29 @@ if(exists("snakemake")){
     input_CNA_stats <- Sys.glob('../output/QDNAseq/*/*/data/CNA_stats.txt')
     input_ACE_results <- Sys.glob('../output/ACE/*/*/ACE_fits.txt')
     input_CNH_results <- Sys.glob('../output/CNH/*/*/CNH_results.txt')
+    input_PureCN <- Sys.glob('../output/CNH/*/*/CNH_results.txt')
+
     input_TMB <- Sys.glob('../output/PureCN/*/*/*_tumor1_mutation_burden.csv')
     input_signatures <- Sys.glob('../output/PureCN/*/*/*_tumor1_signatures.csv')
-
     output_SampleData <- "../output/sampledata/SampleData_WES.txt"
 }
 #-------------------------------------------------------------------------------
 # 1.1 Read data 
 #-------------------------------------------------------------------------------
 # Read datasets
-depth <- tibble::tibble(sample = purrr::map(input_depth, ~strsplit(.x,'/')[[1]][4]), data = purrr::map(input_depth,read.delim)) %>% tidyr::unnest()
+depth <- tibble::tibble(sample = purrr::map(input_depth, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_depth,read.delim)) %>% tidyr::unnest()
 
-CNA_stats <- tibble::tibble(sample = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][5]),binsize = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][4]), data = purrr::map(input_CNA_stats,read.delim)) %>% tidyr::unnest()
+CNA_stats <- tibble::tibble(sample = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_CNA_stats,read.delim)) %>% tidyr::unnest()
 
-ACE_results <- tibble::tibble(sample = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][5]),binsize = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][4]), data = purrr::map(input_ACE_results,read.delim)) %>% tidyr::unnest()
+ACE_results <- tibble::tibble(sample = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_ACE_results,read.delim)) %>% tidyr::unnest()
 
-CNH_results <- tibble::tibble(sample = purrr::map(input_CNH_results, ~strsplit(.x,'/')[[1]][5]),binsize = purrr::map(input_CNH_results, ~strsplit(.x,'/')[[1]][4]), data = purrr::map(input_CNH_results,~read.delim(.x, sep =' '))) %>% tidyr::unnest()
+CNH_results <- tibble::tibble(sample = purrr::map(input_CNH_results, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_CNH_results, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_CNH_results,~read.delim(.x, sep =' '))) %>% tidyr::unnest()
 
-TMB <- tibble::tibble(sample = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][5]),binsize = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][4]), data = purrr::map(input_TMB,~read.delim(.x, sep =','))) %>% tidyr::unnest()
+PureCN <- tibble::tibble(sample = purrr::map(input_PureCN, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_PureCN, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_PureCN,~read.delim(.x, sep =','))) %>% tidyr::unnest() %>% rename(PureCN_ploidy = Ploidy, PureCN_purity = Purity)
 
-signatures <- tibble::tibble(sample = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][5]),binsize = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][4]), data = purrr::map(input_signatures,~read.delim(.x, sep =','))) %>% tidyr::unnest()
+TMB <- tibble::tibble(sample = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_TMB,~read.delim(.x, sep =','))) %>% tidyr::unnest()
+
+signatures <- tibble::tibble(sample = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_signatures,~read.delim(.x, sep =','))) %>% tidyr::unnest()
 
 #-------------------------------------------------------------------------------
 # 1.2 Reformat and join data
@@ -73,8 +77,25 @@ SampleData <- CNA_stats %>%
     left_join(target_depth) %>%
     left_join(ACE_results) %>%
     left_join(CNH_results) %>%
+    left_join(PureCN) %>%
     left_join(TMB) %>%
     left_join(signatures)
+
+
+
+# Rename and select columns
+SampleData <- SampleData %>% rename(
+                   ACE_purity = cellularity,
+                   ACE_ploidy = ploidy,
+                   CNH = Heterogeneity,
+                   CNH_purity = Purity,
+                   CNH_ploidy = Ploidy,
+                   Nmutations = somatic.ontarget,
+                   TMB = somatic.rate.ontarget ) %>%
+    select(sample,binsize,Sex,mean_target_depth,
+           Nmutations, TMB,
+           ACE_purity,CNH_purity, PureCN_purity,ACE_ploidy,CNH_ploidy,PureCN_ploidy,
+           Comment,contains('SBS'))
 
 #-------------------------------------------------------------------------------
 # 2.1 Write to file

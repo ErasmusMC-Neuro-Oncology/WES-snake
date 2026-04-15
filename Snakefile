@@ -170,6 +170,7 @@ rule PureCN:
         vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/PureCN_{binsize}.vcf"),
         intervals = temp(output_dir + 'PureCN/{binsize}/{patient}/baits_hg19_intervals.txt'),
         PureCN_rds = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.rds',
+        PureCN_purity = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.csv',
         variants = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',
         TMB = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',
         signatures = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv'
@@ -228,6 +229,7 @@ rule Create_SampleData:
         CNA_stats = expand(output_dir + 'QDNAseq/{binsize}/{patient}/data/CNA_stats.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         ACE_results = expand(output_dir + 'ACE/{binsize}/{patient}/ACE_fits.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         CNH_results = expand(output_dir + 'CNH/{binsize}/{patient}/CNH_results.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        PureCN_purity = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         TMB = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         signatures = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes'])
     output:
