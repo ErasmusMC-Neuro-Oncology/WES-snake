@@ -75,6 +75,7 @@ rule Sarek:
         targets = config['sarek']['targetregions'],
         intervals = config['sarek']['interval_padding'],
         HMF_PON = config['sarek']['HMF_PON'],
+        COSMIC = config['sarek']['COSMIC'],
         Mutect2_params = os.path.abspath('params/mutect2_params.json'),
         singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/",
         workdir=lambda wildcards: f"{config['sarek']['workdir']}/{wildcards.patient}",
@@ -106,9 +107,10 @@ rule Sarek:
         # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
         samtools view -b -o {output.md_bam} {output.md_cram}
 
-        # Add HMF PON annotation
-        bcftools annotate {output.vcf} -a {params.HMF_PON} -c INFO -O z -o {output.vcf_annotated}
-        bcftools index -t {output.vcf_annotated}
+        # Add HMF PON and COSMIC annotation
+        bcftools annotate {output.vcf} -a {params.HMF_PON} -c INFO -Oz -o {params.workdir}/tmp.vcf.gz ; bcftools index -t {params.workdir}/tmp.vcf.gz
+        bcftools annotate {params.workdir}/tmp.vcf.gz -a {params.COSMIC} -c INFO -Oz -o {output.vcf_annotated}; bcftools index -t {output.vcf_annotated}
+
         
         # Clean cache and intermediate files upon completion but keep on failure
         status=$?
@@ -177,6 +179,7 @@ rule PureCN:
         min_af = config['PureCN']['min_af'],
         min_alt = config['PureCN']['min_alt'],
         min_bq = config['PureCN']['min_bq'],
+        min_cosmic_cnt = config['PureCN']['min_cosmic_cnt'],
         outdir=lambda wildcards: f"{output_dir}/PureCN/{wildcards.binsize}/{wildcards.patient}",
     conda:
         "envs/PureCN.yaml"
@@ -196,8 +199,8 @@ rule PureCN:
         # Modify input vcf
         python3 scripts/FilterVCF.py -i {input.vcf} -o {output.vcf}
         
-        # Run PureCN
-        Rscript $PureCN_lib/PureCN.R \
+        # Run PureCN, set high prior probability for IDH mutant
+        Rscript scripts/PureCN_IDHmut.R \
         --out {params.outdir} \
         --sampleid {wildcards.patient}_tumor1 \
         --segfile {input.Segments} \
@@ -206,7 +209,9 @@ rule PureCN:
         --genome {params.genome} \
         --min-af {params.min_af} \
         --min-base-quality {params.min_bq} \
-        --min-supporting-reads {params.min_alt}
+        --min-supporting-reads {params.min_alt} \
+        --min-cosmic-cnt {params.min_cosmic_cnt} \
+        --cosmic-cnt-info-field GENOME_SCREEN_SAMPLE_COUNT
         
         # Calculate signatures/statistics
          Rscript $PureCN_lib/Dx.R \

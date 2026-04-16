@@ -10,6 +10,7 @@ sarek:
   targetregions : "/trinity/home/r115502/CATNON/targetregions/3112671_Covered.hg38.bed" # target regions
   interval_padding: 100 # region padding around capture regions
   HMF_PON: "/trinity/home/r115502/Resources/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
+  COSMIC: "/trinity/home/r115502/Resources/COSMIC/hg38/Cosmic_GenomeScreensMutant_v103_GRCh38_chr.vcf.gz" # Path to COSMIC vcf for annotation
 
 CopyWriteR:
     cores: 1 # number of cores
@@ -27,6 +28,7 @@ PureCN:
     min_af: 0.1 # minimum allele frequency to include for SNV likelihoods
     min_bq: 20 # minimum base quality of variant position
     min_alt: 5 # minimum number of variant supporting reads
+    min_cosmic_cnt: 10 # minimum number of cosmic counts of variant to give high somatic prior
 
 CNA_PON:
     100kbp: '/trinity/home/r115502/PON/PON_Heidelberg_panel/output/PON/CNA_PON_100kbp.Rds'
