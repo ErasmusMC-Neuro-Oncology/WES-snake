@@ -78,6 +78,7 @@ rule Sarek:
         targets = config['sarek']['targetregions'],
         intervals = config['sarek']['interval_padding'],
         HMF_PON = config['sarek']['HMF_PON'],
+        COSMIC = config['sarek']['COSMIC'],
         Mutect2_params = os.path.abspath('params/mutect2_params.json'),
         singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/",
         workdir=lambda wildcards: f"{config['sarek']['workdir']}/{wildcards.patient}",
@@ -109,8 +110,9 @@ rule Sarek:
         # Save alignment as .bam (to be fixed with --save-output-as-bam in new sarek release)
         samtools view -b -o {output.md_bam} {output.md_cram}
 
-        # Add HMF PON annotation
-        bcftools annotate {output.vcf} -a {params.HMF_PON} -c INFO -O z -o {output.vcf_annotated}
+        # Add HMF PON and COSMIC annotation
+        bcftools annotate {output.vcf} -a {params.HMF_PON} -c INFO -Ou | \
+        bcftools annotate -a {params.COSMIC} -c INFO -Oz -o {output.vcf_annotated}
         bcftools index -t {output.vcf_annotated}
         
         # Clean cache and intermediate files upon completion but keep on failure

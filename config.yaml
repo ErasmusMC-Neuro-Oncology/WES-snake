@@ -11,6 +11,7 @@ sarek:
   targetregions : "/trinity/home/r115502/Resources/target_regions/S31285117_Regions_Annotated.bed" # Exome regions
   interval_padding: 100 # region padding around capture regions
   HMF_PON: "/trinity/home/r115502/Resources/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
+  COSMIC: "/trinity/home/r115502/Resources/COSMIC/hg38/Cosmic_GenomeScreensMutant_v103_GRCh38.vcf.gz" # Path to COSMIC vcf for annotation
 
 CopyWriteR:
     cores: 1 # number of cores
