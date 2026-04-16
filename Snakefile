@@ -111,9 +111,8 @@ rule Sarek:
         samtools view -b -o {output.md_bam} {output.md_cram}
 
         # Add HMF PON and COSMIC annotation
-        bcftools annotate {output.vcf} -a {params.HMF_PON} -c INFO -Ou | \
-        bcftools annotate -a {params.COSMIC} -c INFO -Oz -o {output.vcf_annotated}
-        bcftools index -t {output.vcf_annotated}
+        bcftools annotate {output.vcf} -a {params.HMF_PON} -c INFO -Oz -o {params.workdir}/tmp.vcf.gz ; bcftools index -t {params.workdir}/tmp.vcf.gz
+        bcftools annotate {params.workdir}/tmp.vcf.gz -a {params.COSMIC} -c INFO -Oz -o {output.vcf_annotated}; bcftools index -t {output.vcf_annotated}
         
         # Clean cache and intermediate files upon completion but keep on failure
         status=$?
@@ -182,7 +181,8 @@ rule PureCN:
         targets = config['sarek']['targetregions'],
         min_af = config['PureCN']['min_af'],
         min_alt = config['PureCN']['min_alt'],
-        min_bq = config['PureCN']['min_bq'],        
+        min_bq = config['PureCN']['min_bq'],
+        min_cosmic_cnt = config['PureCN']['min_cosmic_cnt'],
         outdir=lambda wildcards: f"{output_dir}/PureCN/{wildcards.binsize}/{wildcards.patient}",
     conda:
         "envs/PureCN.yaml"
@@ -213,6 +213,7 @@ rule PureCN:
         --min-af {params.min_af} \
         --min-base-quality {params.min_bq} \
         --min-supporting-reads {params.min_alt} \
+        --min-cosmic-cnt {params.min_cosmic_cnt} \
         --cosmic-cnt-info-field GENOME_SCREEN_SAMPLE_COUNT
         
         # Calculate signatures/statistics
