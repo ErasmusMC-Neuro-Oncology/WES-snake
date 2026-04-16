@@ -203,7 +203,7 @@ rule PureCN:
         python3 scripts/FilterVCF.py -i {input.vcf} -o {output.vcf}
         
         # Run PureCN
-        Rscript $PureCN_lib/PureCN.R \
+        Rscript scripts/PureCN.R \
         --out {params.outdir} \
         --sampleid {wildcards.patient}_tumor1 \
         --segfile {input.Segments} \
@@ -212,7 +212,8 @@ rule PureCN:
         --genome {params.genome} \
         --min-af {params.min_af} \
         --min-base-quality {params.min_bq} \
-        --min-supporting-reads {params.min_alt}
+        --min-supporting-reads {params.min_alt} \
+        --cosmic-cnt-info-field GENOME_SCREEN_SAMPLE_COUNT
         
         # Calculate signatures/statistics
          Rscript $PureCN_lib/Dx.R \
