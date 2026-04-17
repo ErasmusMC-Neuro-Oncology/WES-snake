@@ -69,14 +69,9 @@ Merged summary tables and QC plots are generated.
 
 ## Software Requirements
 
-Tested with:
-
 * **Snakemake 9.17.3**
 * **nf-core/Sarek > 3.8.1**
 * Conda / Mamba
-* Samtools
-* bcftools
-* R
 
 ---
 
