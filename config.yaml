@@ -1,13 +1,11 @@
 ---
 all:
-    samplesheet: '/trinity/home/r115502/MINT/WES-snake/samplesheet.csv' # specify sarek samplesheet: must contain patient, sample, status, lane, fastq_1 and fastq_2
-    data_dir: "/trinity/home/r115502/MINT/fastq/"  # Specify main data directory
-    data_dir2: "/trinity/home/r115502/MINT/fastq_batch2/"  # Specify main data directory
-    output_dir: "/trinity/home/r115502/MINT/output/"                  # Specify main output directory
+    samplesheet: '/trinity/home/r115502/SSLOWGRADE/output/WES/samplesheets/Samplesheet_WES.csv' # specify sarek samplesheet: must contain patient, sample, status, lane, fastq_1 and fastq_2
+    output_dir: "/trinity/home/r115502/SSLOWGRADE/output/WES/"  # Specify main output directory
     ref: '/trinity/home/r115502/Resources/BWAIndex/genome.fa' # Path to reference genome
 
 sarek:
-  workdir: '/trinity/home/r115502/MINT/WES-snake/.sarek/work/' # directory to save sarek working dir
+  workdir: '/trinity/home/r115502/SSLOWGRADE/sslowgrade/workflows/WES-snake/.sarek/work/' # directory to save sarek working dir
   targetregions : "/trinity/home/r115502/Resources/target_regions/S31285117_Regions_Annotated.bed" # Exome regions
   interval_padding: 100 # region padding around capture regions
   HMF_PON: "/trinity/home/r115502/Resources/PON/hg38/hmf_pon.vcf.gz" # Path to HMF PON for annotation
@@ -23,7 +21,7 @@ ACE:
     penploidy : 0.5 # penalty for high ploidy solutions
 
 CNH:
-    path: '/trinity/home/r115502/MINT/WES-snake/scripts/CNH/' # Path to CNH code
+    path: '/trinity/home/r115502/SSLOWGRADE/sslowgrade/workflows/WES-snake/scripts/CNH/' # Path to CNH code
     
 PureCN:
     min_af: 0.1 # minimum allele frequency to include for SNV likelihoods

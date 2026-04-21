@@ -2,41 +2,27 @@ configfile: "config.yaml"
 from datetime import datetime
 import pandas as pd
 import os
+
 #+++++++++++++++++++++++++++++++++++++++ 0 PREPARE WILDCARDS AND TARGET ++++++++++++++++++++++++++++++++++++++++++++
 # 0.1 Prepare variables and wildcards
 output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
-Patients = pd.read_csv('samplesheet.csv')['patient'].unique() if os.path.isfile('samplesheet.csv') else []
+Patients = pd.read_csv(config['all']['samplesheet'])['patient'].unique()
 
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
 rule all:
     input:
         output_dir + 'plots/Barplot_target_depth.pdf',
-        #expand(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam",patient=Patients)
         expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
-
-#++++++++++++++++++++++++++++++++++++++++++++ 0 CREATE SAMPLESHEET ++++++++++++++++++++++++++++++++++++++++++++++++
-rule Create_Samplesheet:
-    params:
-        data_dir = config['all']['data_dir'],
-        data_dir2 = config['all']['data_dir2'],
-        sample_overview = '../data/MINT_db.xlsx',
-        sample_overview2 = '../data/1kuvre_fastq_list.csv',
-    output:
-        'samplesheet.csv'
-    conda:
-        'envs/R.yaml'
-    script:
-        'scripts/Create_Samplesheet_MINT.R'
 
         
 #+++++++++++++++++++++++++++++++++++++++++ 1 RUN SAREK VARIANT CALLING +++++++++++++++++++++++++++++++++++++++++++++
 # 1.1 Download Sarek
 rule Download_Sarek:
     output:
-        directory(".nf-core-sarek/")
+        directory(os.path.abspath(".nf-core-sarek/"))
     params:
         singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/"
     conda:
@@ -50,10 +36,9 @@ rule Download_Sarek:
 # 1.2 Run Sarek
 rule Sarek:
     input:
-        samplesheet = os.path.abspath('samplesheet.csv'),
+        samplesheet = output_dir + 'samplesheets/Samplesheet_WES_{patient}.csv',
         sarek = os.path.abspath(".nf-core-sarek/")
     output:
-        samplesheet = output_dir + 'sarek/{patient}/csv/samplesheet.csv',
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
         recal = temp(directory(output_dir + "sarek/{patient}/preprocessing/recalibrated/")),
         md_cram = temp(output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.cram"),
@@ -88,16 +73,13 @@ rule Sarek:
         export NXF_WORK={params.workdir}
         export NXF_SINGULARITY_CACHEDIR={params.singularity_dir}
 	export NXF_CACHE_DIR={params.workdir}
-        
-        # Subset samplesheet
-        awk -F',' '$1=="patient" || $1=="{wildcards.patient}"' {input.samplesheet} > {output.samplesheet}
 
         nextflow -log {log} run {input.sarek}/{params.version}/ \
            -profile {params.profile} \
            -work-dir {params.workdir} \
            -resume \
            -c {params.Mutect2_params} \
-              --input {output.samplesheet} \
+              --input {input.samplesheet} \
               --outdir {params.outdir} \
               --genome {params.genome} \
               --tools {params.tools} \
