@@ -2,7 +2,7 @@ configfile: "config.yaml"
 from datetime import datetime
 import pandas as pd
 import os
-
+print()
 #+++++++++++++++++++++++++++++++++++++++ 0 PREPARE WILDCARDS AND TARGET ++++++++++++++++++++++++++++++++++++++++++++
 # 0.1 Prepare variables and wildcards
 output_dir = config["all"]["output_dir"]
@@ -22,22 +22,21 @@ rule all:
 # 1.1 Download Sarek
 rule Download_Sarek:
     output:
-        directory(os.path.abspath(".nf-core-sarek/"))
-    params:
-        singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/"
+        sarek = directory(config['sarek']['workdir'] + ".nf-core-sarek/"),
+        singularity_dir = directory(f"{config['sarek']['workdir']}singularity/cache/")
     conda:
         "envs/nextflow.yaml"
     shell:
         """
-	export NXF_SINGULARITY_CACHEDIR={params.singularity_dir}        
-	nf-core pipelines download --outdir {output} --container-system singularity --compress none -r dev sarek
+	export NXF_SINGULARITY_CACHEDIR={output.singularity_dir}        
+	nf-core pipelines download --outdir {output.sarek} --container-system singularity --force --compress none -r dev sarek
         """
 
 # 1.2 Run Sarek
 rule Sarek:
     input:
         samplesheet = output_dir + 'samplesheets/Samplesheet_WES_{patient}.csv',
-        sarek = os.path.abspath(".nf-core-sarek/")
+        sarek = config['sarek']['workdir'] + ".nf-core-sarek/"
     output:
         mapped = temp(directory(output_dir + "sarek/{patient}/preprocessing/mapped/")),
         recal = temp(directory(output_dir + "sarek/{patient}/preprocessing/recalibrated/")),
@@ -54,7 +53,7 @@ rule Sarek:
     conda:
         "envs/nextflow.yaml"
     log:
-        os.path.abspath("logs/sarek/{patient}/nextflow_"+datetime.now().strftime("%Y_%m_%d_%H%M%S")+".log")
+        "logs/sarek/{patient}/nextflow_"+datetime.now().strftime("%Y_%m_%d_%H%M%S")+".log"
     params:
         version = 'dev',
         genome = 'GATK.GRCh38',
@@ -64,7 +63,7 @@ rule Sarek:
         intervals = config['sarek']['interval_padding'],
         HMF_PON = config['sarek']['HMF_PON'],
         COSMIC = config['sarek']['COSMIC'],
-        Mutect2_params = os.path.abspath('params/mutect2_params.json'),
+        Mutect2_params = config['sarek']['Mutect2_params'],
         singularity_dir = f"{config['sarek']['workdir']}/singularity/cache/",
         workdir=lambda wildcards: f"{config['sarek']['workdir']}/{wildcards.patient}",
         outdir=lambda wildcards: f"{output_dir}/sarek/{wildcards.patient}",
@@ -126,9 +125,10 @@ rule CNA_analysis:
         CNH_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_plot.pdf',
         CNH_error_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_errorplot.pdf',
     resources:
-        mem_mb=50000,
+        mem_mb=100000,
         gpu=0,
         runtime='30h'
+        
     params:
         genome = 'hg38',
         cores = config['CopyWriteR']['cores'],
