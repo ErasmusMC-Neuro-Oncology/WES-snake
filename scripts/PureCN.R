@@ -183,16 +183,8 @@ alias_list <- list(
 )
 
 
-SetPriorVcf_IDH_mutant <- function(vcf, ...) {
-    # First let PureCN assign default priors
-    vcf <- PureCN::setPriorVcf(vcf, ...)
-
-    # Fetch annotations
-    ann <- info(vcf)$ANN
-    if (is.null(ann)) return(vcf)
-
+Fetch_IDH_mut <- function(ann){
     hotspot_idx <- c()
-    
     for (i in seq_along(ann)) {
         entries <- unlist(strsplit(as.character(ann[[i]]), ","))
         for (x in entries) {
@@ -217,6 +209,22 @@ SetPriorVcf_IDH_mutant <- function(vcf, ...) {
     }
 
     hotspot_idx <- unique(hotspot_idx)
+    return(hotspot_idx)
+    
+}
+
+
+SetPriorVcf_IDH_mutant <- function(vcf,
+                                   prior.somatic = c(0.5, 5e-04, 0.999, 1e-04, 0.995, 5e-04),
+                                   ...) {
+    # First let PureCN assign default priors
+    vcf <- PureCN::setPriorVcf(vcf, prior.somatic = prior.somatic , ...)
+
+    # Fetch annotations
+    ann <- info(vcf)$ANN
+    if (is.null(ann)) return(vcf)
+    # Fetch IDH mutation
+    hotspot_idx <- Fetch_IDH_mut(ann)
 
     if (length(hotspot_idx) > 0) {
         info(vcf)$PureCN.PR[hotspot_idx] <- 0.9999
@@ -226,6 +234,36 @@ SetPriorVcf_IDH_mutant <- function(vcf, ...) {
 
     vcf
 }
+
+
+SetPriorPurity <- function(vcf,test.purity, a=6 , b=4){
+    vcf <- PureCN::filterVcfMuTect2(vcf)
+    ann <- info(vcf)$ANN
+    hotspot_idx <- Fetch_IDH_mut(ann)
+    if(length(hotspot_idx) >  0){
+        ad <- geno(vcf)$AD[hotspot_idx, ]
+        alt_reads   <- ad[[1]][2]
+        total_reads <- ad[[1]][1] + ad[[1]][2]
+
+        expected_vaf <- test.purity / 2
+
+                                        # Binomial likelihood
+        likelihood    <- dbinom(alt_reads, size = total_reads, prob = expected_vaf)
+        prior_weights <- likelihood / sum(likelihood)
+        prior_weights <- dbeta(test.purity, shape1 = a, shape2 = b)
+        prior_weights <- prior_weights / sum(prior_weights)
+
+        plot(prior_weights)
+        test.purity[which.max(prior_weights)]
+
+    }else{
+        prior_weights <- rep(1, length(test.purity))/length(test.purity)
+    }
+    return(prior_weights)
+}
+
+
+
 
 replace_alias <- function(x, deprecated = TRUE) {
     idx <- match(x, paste0("--", names(alias_list)))
@@ -361,6 +399,9 @@ if (file.exists(file.rds) && !opt$force) {
     af.range <- c(opt$min_af, 1 - opt$min_af)
     test.purity <- seq(opt$min_purity, opt$max_purity, by = 0.01)
 
+    # Set prior purity based on IDH mutation
+    prior.purity <- SetPriorPurity(vcf,test.purity)
+
     uses.recommended.fun <- FALSE
     recommended.fun <- "Hclust"
     if (is.null(seg.file)) {
@@ -433,6 +474,11 @@ if (file.exists(file.rds) && !opt$force) {
     if (opt$fun_segmentation == "GATK4" && !is.null(opt$changepoints_penalty)) {
         args.segmentation$changepoint.penalty <- opt$changepoints_penalty
     }
+
+
+
+
+    
     ret <- runAbsoluteCN(normal.coverage.file = normal.coverage.file,
             tumor.coverage.file = tumor.coverage.file, vcf.file = vcf,
             sampleid = sampleid, plot.cnv = TRUE,
@@ -440,6 +486,7 @@ if (file.exists(file.rds) && !opt$force) {
             genome = opt$genome, seg.file = seg.file,
             log.ratio = log.ratio,
             test.purity = test.purity,
+            prior.purity = prior.purity,
             test.num.copy = seq(0, opt$max_copy_number),
             sex = opt$sex,
             args.filterVcf = list(snp.blacklist = snp.blacklist,
