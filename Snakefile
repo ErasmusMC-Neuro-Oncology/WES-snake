@@ -2,13 +2,15 @@ configfile: "config.yaml"
 from datetime import datetime
 import pandas as pd
 import os
-print()
+
 #+++++++++++++++++++++++++++++++++++++++ 0 PREPARE WILDCARDS AND TARGET ++++++++++++++++++++++++++++++++++++++++++++
 # 0.1 Prepare variables and wildcards
 output_dir = config["all"]["output_dir"]
 
 # Fetch Patient wildcards
 Patients = pd.read_csv(config['all']['samplesheet'])['patient'].unique()
+Patients = [pat for pat in Patients if not pat in ['SG_004','SG_040']]
+
 
 #-------------------------------------------------------------------------------------------------------------------
 # 0.2 specify target rules
@@ -160,11 +162,14 @@ rule PureCN:
     params:
         genome = 'hg38',
         ref = config['all']['ref'],
+        snake_dir = config['all']['snake_dir'],
         targets = config['sarek']['targetregions'],
         min_af = config['PureCN']['min_af'],
         min_alt = config['PureCN']['min_alt'],
         min_bq = config['PureCN']['min_bq'],
         min_cosmic_cnt = config['PureCN']['min_cosmic_cnt'],
+        CNA_sdev =  config['PureCN']['CNA_sdev'],
+        CNA_max_nonclonal =  config['PureCN']['CNA_max_nonclonal'],
         outdir=lambda wildcards: f"{output_dir}/PureCN/{wildcards.binsize}/{wildcards.patient}",
     conda:
         "envs/PureCN.yaml"
@@ -182,20 +187,22 @@ rule PureCN:
         --genome {params.genome}
 
         # Modify input vcf
-        python3 scripts/FilterVCF.py -i {input.vcf} -o {output.vcf}
+        python3 {params.snake_dir}/scripts/FilterVCF.py -i {input.vcf} -o {output.vcf}
         
         # Run PureCN
-        Rscript scripts/PureCN.R \
+        Rscript {params.snake_dir}/scripts/PureCN.R \
         --out {params.outdir} \
         --sampleid {wildcards.patient}_tumor1 \
         --segfile {input.Segments} \
         --vcf {output.vcf} \
         --intervals {output.intervals} \
         --genome {params.genome} \
+        --segsdev {params.CNA_sdev} \
         --min-af {params.min_af} \
         --min-base-quality {params.min_bq} \
         --min-supporting-reads {params.min_alt} \
         --min-cosmic-cnt {params.min_cosmic_cnt} \
+        --max-non-clonal {params.CNA_max_nonclonal} \
         --cosmic-cnt-info-field GENOME_SCREEN_SAMPLE_COUNT
         
         # Calculate signatures/statistics
@@ -217,6 +224,7 @@ rule Create_SampleData:
         CNH_results = expand(output_dir + 'CNH/{binsize}/{patient}/CNH_results.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         PureCN_purity = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         TMB = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        variants = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         signatures = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes'])
     output:
         SampleData = output_dir + 'sampledata/SampleData_WES.txt'

@@ -29,6 +29,7 @@ if(exists("snakemake")){
     input_CNH_results <- snakemake@input[["CNH_results"]]
     input_PureCN <- snakemake@input[["PureCN_purity"]]
     input_TMB <- snakemake@input[["TMB"]]
+    input_variants <- snakemake@input[["variants"]]
     input_signatures <- snakemake@input[["signatures"]]
     output_SampleData <- snakemake@output[["SampleData"]]
 }else{
@@ -39,26 +40,33 @@ if(exists("snakemake")){
     input_PureCN <- Sys.glob('../output/CNH/*/*/CNH_results.txt')
 
     input_TMB <- Sys.glob('../output/PureCN/*/*/*_tumor1_mutation_burden.csv')
+    input_variants <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/PureCN/*/*/*_tumor1_variants.csv')
+
     input_signatures <- Sys.glob('../output/PureCN/*/*/*_tumor1_signatures.csv')
     output_SampleData <- "../output/sampledata/SampleData_WES.txt"
 }
+
+
+
 #-------------------------------------------------------------------------------
 # 1.1 Read data 
 #-------------------------------------------------------------------------------
 # Read datasets
-depth <- tibble::tibble(sample = purrr::map(input_depth, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_depth,read.delim)) %>% tidyr::unnest()
+depth <- tibble::tibble(sample = purrr::map(input_depth, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_depth,read.delim)) %>% tidyr::unnest()
 
-CNA_stats <- tibble::tibble(sample = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_CNA_stats,read.delim)) %>% tidyr::unnest()
+CNA_stats <- tibble::tibble(sample = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_CNA_stats,read.delim)) %>% tidyr::unnest()
 
-ACE_results <- tibble::tibble(sample = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_ACE_results,read.delim)) %>% tidyr::unnest()
+ACE_results <- tibble::tibble(sample = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_ACE_results, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_ACE_results,read.delim)) %>% tidyr::unnest()
 
-CNH_results <- tibble::tibble(sample = purrr::map(input_CNH_results, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_CNH_results, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_CNH_results,~read.delim(.x, sep =' '))) %>% tidyr::unnest()
+CNH_results <- tibble::tibble(sample = purrr::map(input_CNH_results, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_CNH_results, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_CNH_results,~read.delim(.x, sep =' '))) %>% tidyr::unnest()
 
-PureCN <- tibble::tibble(sample = purrr::map(input_PureCN, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_PureCN, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_PureCN,~read.delim(.x, sep =','))) %>% tidyr::unnest() %>% rename(PureCN_ploidy = Ploidy, PureCN_purity = Purity)
+PureCN <- tibble::tibble(sample = purrr::map(input_PureCN, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_PureCN, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_PureCN,~read.delim(.x, sep =','))) %>% tidyr::unnest() %>% rename(PureCN_ploidy = Ploidy, PureCN_purity = Purity)
 
-TMB <- tibble::tibble(sample = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_TMB,~read.delim(.x, sep =','))) %>% tidyr::unnest()
+TMB <- tibble::tibble(sample = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_TMB,~read.delim(.x, sep =','))) %>% tidyr::unnest()
 
-signatures <- tibble::tibble(sample = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][8]), data = purrr::map(input_signatures,~read.delim(.x, sep =','))) %>% tidyr::unnest()
+variants <- tibble::tibble(sample = purrr::map(input_variants, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_variants, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_variants,~read.delim(.x, sep =','))) %>% tidyr::unnest()
+
+signatures <- tibble::tibble(sample = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_signatures,~read.delim(.x, sep =','))) %>% tidyr::unnest()
 
 #-------------------------------------------------------------------------------
 # 1.2 Reformat and join data
@@ -68,6 +76,31 @@ target_depth <- depth %>%
     filter(grepl("_region", chrom)) %>%  
     group_by(sample) %>%
     summarise(mean_target_depth = sum(bases) / sum(length) )
+
+
+# Fetch IDH mutation status and vaf
+IDH_status <- variants %>%
+  filter(ML.SOMATIC == TRUE) %>%
+  group_by(Sampleid, binsize) %>%
+  summarise(
+    IDHmt = case_when(
+      any(gene.symbol == "IDH1") ~ "IDH1",
+      any(gene.symbol == "IDH2") ~ "IDH2",
+      TRUE ~ "IDHwt"
+    ),
+    
+    IDHvaf_raw = {
+      idh_vals <- AR[gene.symbol %in% c("IDH1", "IDH2")]
+      if (length(idh_vals) > 0) max(idh_vals) else NA_real_
+    },
+    IDHvaf_model = {
+      idh_vals <- ML.AR[gene.symbol %in% c("IDH1", "IDH2")]
+      if (length(idh_vals) > 0) max(idh_vals) else NA_real_
+    },
+    
+    .groups = "drop"
+  )
+
 
 # Fetch best ACE fit
 ACE_results <- ACE_results %>% group_by(sample,binsize) %>% filter(error == min(error)) %>% ungroup() %>% select(-error, - minimum)
@@ -79,7 +112,8 @@ SampleData <- CNA_stats %>%
     left_join(CNH_results) %>%
     left_join(PureCN) %>%
     left_join(TMB) %>%
-    left_join(signatures)
+    left_join(signatures) %>%
+    left_join(IDH_status)
 
 
 
@@ -91,10 +125,12 @@ SampleData <- SampleData %>% rename(
                    CNH_purity = Purity,
                    CNH_ploidy = Ploidy,
                    Nmutations = somatic.ontarget,
+                   Codel_1p19 = chr1p19q_status,
                    TMB = somatic.rate.ontarget ) %>%
     select(sample,binsize,Sex,mean_target_depth,
-           Nmutations, TMB,
-           ACE_purity,CNH_purity, PureCN_purity,ACE_ploidy,CNH_ploidy,PureCN_ploidy,
+           Nmutations, TMB, CNA_load,
+           IDHmt, Codel_1p19, CDKN2AB_status,
+           IDHvaf_raw, IDHvaf_model,ACE_purity,CNH_purity, PureCN_purity,ACE_ploidy,CNH_ploidy,PureCN_ploidy,
            Comment,contains('SBS'))
 
 #-------------------------------------------------------------------------------
