@@ -206,7 +206,7 @@ rule PureCN:
         --cosmic-cnt-info-field GENOME_SCREEN_SAMPLE_COUNT
         
         # Calculate signatures/statistics
-         Rscript $PureCN_lib/Dx.R \
+         Rscript {params.snake_dir}/scripts/Dx.R \
         --rds {output.PureCN_rds} \
         --callable {params.targets} \
         --signatures \

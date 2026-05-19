@@ -5,6 +5,7 @@ dependencies:
   - r-dplyr
   - r-tidyr
   - r-tibble
+  - r-ggplot2
   - bioconductor-copywriter
   - bioconductor-qdnaseq
   - bioconductor-dnacopy
