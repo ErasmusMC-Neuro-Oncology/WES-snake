@@ -525,8 +525,25 @@ if (file.exists(file.rds) && !opt$force) {
     if (opt$bootstrap_n > 0) {
         ret <- bootstrapResults(ret, n = opt$bootstrap_n)
     }
+
+
+    ### RESTORE VARIANTS WITH COSMIC BUT NO DBSNP -------------------------------------------------------
+    tmp <- ret$results[[1]]
+    p <- tmp$SNV.posterior$posteriors
+    # Change somatic status/CCF for variants with high prior but marked as germline
+    ix <- which(p$prior.somatic > 0.9 & !p$ML.SOMATIC)
+    p[ix,'ML.SOMATIC'] <- TRUE
+    p[ix,'CELLFRACTION'] <- 1
+    tmp$SNV.posterior$posteriors <- p
+    ret$results[[1]] <- tmp
+    # ---------------------------------------------------------------------------------------------------
     saveRDS(ret, file = file.rds, version = opt[["rds_version"]])
 }
+
+
+
+
+
 
 ### Create output files -------------------------------------------------------
 
