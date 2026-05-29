@@ -158,7 +158,8 @@ rule PureCN:
         PureCN_purity = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.csv',
         variants = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',
         TMB = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',
-        signatures = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv'
+        signatures = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv',
+        trinuc = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_trinucleotide_counts.txt'
     params:
         genome = 'hg38',
         ref = config['all']['ref'],
@@ -214,6 +215,24 @@ rule PureCN:
         """
 
 
+rule SigProfilerAssignment:
+    input:
+        trinuc = expand(output_dir + 'PureCN/1000kbp/{patient}/{patient}_tumor1_trinucleotide_counts.txt',patient=Patients )
+    output:
+        activities = output_dir + 'SigProfilerAssignment/Assignment_Solution/Activities/Assignment_Solution_Activities.txt'
+    params:
+        snake_dir = config['all']['snake_dir'],
+        out_dir = output_dir + 'SigProfilerAssignment',
+    conda:
+        'envs/sigprofiler.yaml'
+    shell:
+        """
+        python3 {params.snake_dir}/scripts/RunSigProfilerAssignment.py \
+            --input {input.trinuc} \
+            --output {params.out_dir} 
+        """
+        
+
 #++++++++++++++++++++++++++++++++++++++++++++++++ 4 MERGE SAMPLE DATA +++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Create samplesheet with stats
 rule Create_SampleData:
@@ -225,7 +244,7 @@ rule Create_SampleData:
         PureCN_purity = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         TMB = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         variants = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
-        signatures = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes'])
+        signatures = output_dir + 'SigProfilerAssignment/Assignment_Solution/Activities/Assignment_Solution_Activities.txt'
     output:
         SampleData = output_dir + 'sampledata/SampleData_WES.txt'
     conda:

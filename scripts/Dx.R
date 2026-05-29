@@ -117,7 +117,8 @@ flog.info("Calling mutation burden...")
 
 fun.countMutation <- eval(formals(callMutationBurden)$fun.countMutation)
 if (opt$keep_indels) fun.countMutation <- function(vcf) width(vcf) >= 1
-    
+
+
 mb <- callMutationBurden(res, callable = callable, exclude = exclude,
         max.prior.somatic = opt$max_prior_somatic,
         fun.countMutation = fun.countMutation)
@@ -190,7 +191,10 @@ if (opt$signatures && require(deconstructSigs)) {
             invisible(dev.off())
             write.csv(sigs$weights, file = outfile)
             # also write observed trinucleotide fractions
-            write.csv(sigs$tumor, paste0(outPrefix, "_trinucleotide_fractions.csv")) 
+            write.csv(sigs$tumor, paste0(outPrefix, "_trinucleotide_fractions.csv"))
+            
+            write.table(cbind(data.frame(MutationType = colnames(sigs.input)), t(sigs.input)),
+                        paste0(outPrefix, "_trinucleotide_counts.txt"),row.names = F, sep = '\t',quote = F) 
 
             
         } else {

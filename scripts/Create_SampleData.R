@@ -14,6 +14,7 @@
 #
 # History:
 #  02-03-2026: File creation
+#  29-05-2026: Add SigProfilerAssignment signatures
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # 0.1  Load packages
 #-------------------------------------------------------------------------------
@@ -42,7 +43,7 @@ if(exists("snakemake")){
     input_TMB <- Sys.glob('../output/PureCN/*/*/*_tumor1_mutation_burden.csv')
     input_variants <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/PureCN/*/*/*_tumor1_variants.csv')
 
-    input_signatures <- Sys.glob('../output/PureCN/*/*/*_tumor1_signatures.csv')
+    input_signatures <- '/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/SigProfilerAssignment/Assignment_Solution/Activities/Assignment_Solution_Activities.txt'
     output_SampleData <- "../output/sampledata/SampleData_WES.txt"
 }
 
@@ -66,7 +67,8 @@ TMB <- tibble::tibble(sample = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][10])
 
 variants <- tibble::tibble(sample = purrr::map(input_variants, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_variants, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_variants,~read.delim(.x, sep =','))) %>% tidyr::unnest()
 
-signatures <- tibble::tibble(sample = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_signatures,~read.delim(.x, sep =','))) %>% tidyr::unnest()
+signatures <- read.delim(input_signatures)
+#signatures <- tibble::tibble(sample = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_signatures,~read.delim(.x, sep =','))) %>% tidyr::unnest()
 
 #-------------------------------------------------------------------------------
 # 1.2 Reformat and join data
@@ -105,15 +107,25 @@ IDH_status <- variants %>%
 # Fetch best ACE fit
 ACE_results <- ACE_results %>% group_by(sample,binsize) %>% filter(error == min(error)) %>% ungroup() %>% select(-error, - minimum)
 
+
+# Fetch relative signature contributions 
+signatures <- signatures %>%
+    tibble::column_to_rownames('Samples') %>%
+    apply(1, function(x) x / sum(x)) %>%
+    t() %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(var= 'sample')
+
+
 # Join data
 SampleData <- CNA_stats %>%
     left_join(target_depth) %>%
+    left_join(IDH_status) %>%
     left_join(ACE_results) %>%
     left_join(CNH_results) %>%
     left_join(PureCN) %>%
     left_join(TMB) %>%
-    left_join(signatures) %>%
-    left_join(IDH_status)
+    left_join(signatures)
 
 
 

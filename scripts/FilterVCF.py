@@ -75,36 +75,35 @@ with gzip.open(args.input, "rt") as infile, open(args.output, "w") as outfile:
         if is_idh1_r132:
             # Always rescue
             cols[6] = "PASS"
+
             # Parse FORMAT/sample fields
             format_fields = cols[8].split(":")
             sample_fields = cols[9].split(":")
             format_dict = dict(zip(format_fields, sample_fields))
-            ref_reads, alt_reads = map(int, format_dict["FAD"].split(","))
+            ref_reads, alt_reads = map(int, format_dict["AD"].split(","))
             dp = int(format_dict["DP"])
             af = float(format_dict["AF"])
-            # Only modify if necessary
-            modified = False
-            # ALT reads threshold
-            if alt_reads < MIN_ALT:
-                alt_reads = MIN_ALT
-                modified = True
-            # Recalculate DP
-            if modified:
+            # Determine scaling factor needed
+            scale_factor = max(
+                1,
+                (10 + ref_reads - 1) // ref_reads if ref_reads > 0 else 1,
+                (11 + alt_reads - 1) // alt_reads if alt_reads > 0 else 1
+            )
+            # Scale counts if necessary
+            if scale_factor > 1:
+                ref_reads *= scale_factor
+                alt_reads *= scale_factor
                 dp = ref_reads + alt_reads
-            # AF threshold
-            af = alt_reads / dp
-            if af < MIN_AF:
-                required_alt = int((MIN_AF * dp) + 1)
-                if required_alt > alt_reads:
-                    alt_reads = required_alt
-                    dp = ref_reads + alt_reads
-                    af = alt_reads / dp
-            # Update fields
-            format_dict["AD"] = f"{ref_reads},{alt_reads}"
-            # Update FAD if present
+                af = alt_reads / dp
+                # Always PASS
+                cols[6] = "PASS"
+                # Update AD
+                format_dict["AD"] = f"{ref_reads},{alt_reads}"
+                # Update FAD if present
             if "FAD" in format_dict:
                 fad_ref, fad_alt = map(int, format_dict["FAD"].split(","))
-                fad_alt = alt_reads
+                fad_ref *= scale_factor
+                fad_alt *= scale_factor
                 format_dict["FAD"] = f"{fad_ref},{fad_alt}"
             # Update DP/AF
             format_dict["DP"] = str(dp)

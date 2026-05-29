@@ -1,6 +1,7 @@
 suppressPackageStartupMessages(library(optparse))
 suppressPackageStartupMessages(library(futile.logger))
 
+
 ### Parsing command line ------------------------------------------------------
 option_list <- list(
     make_option(c("-i", "--sampleid"), action = "store", type = "character",
@@ -183,6 +184,34 @@ alias_list <- list(
     "speedupheuristics" = "speedup-heuristics",
     "outvcf" = "out-vcf"
 )
+
+
+# Define the position you want to track
+watch_chr <- "chr2"
+watch_pos <- 208248388
+
+# Patch .removeVariants in the PureCN namespace
+unlockBinding(".removeVariants", asNamespace("PureCN"))
+assignInNamespace(".removeVariants", function(vcf, idx, label, na.rm = TRUE) {
+    if (is(idx, "integer")) {
+        idx <- seq(length(vcf)) %in% idx
+    }
+    if (any(is.na(idx))) {
+        idx[is.na(idx)] <- na.rm
+    }
+    # Check if our variant of interest is among those being removed
+    ranges <- rowRanges(vcf[idx])
+    hit <- as.character(seqnames(ranges)) == watch_chr & 
+           start(ranges) == watch_pos
+    if (any(hit)) {
+        flog.warn(">>> VARIANT OF INTEREST chr2:208248388 REMOVED AT FILTER STEP: %s", label)
+    }
+    if (all(idx)) {
+        stop("No variants passed filter ", label, ".")
+    }
+    vcf[!idx]
+}, ns = asNamespace("PureCN"))
+
 
 
 Fetch_IDH_mut <- function(ann){
