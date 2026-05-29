@@ -34,17 +34,16 @@ if(exists("snakemake")){
     input_signatures <- snakemake@input[["signatures"]]
     output_SampleData <- snakemake@output[["SampleData"]]
 }else{
-    input_depth <- Sys.glob('../output/sarek/*/reports/mosdepth/*_tumor1/*_tumor1.md.mosdepth.summary.txt')
-    input_CNA_stats <- Sys.glob('../output/QDNAseq/*/*/data/CNA_stats.txt')
-    input_ACE_results <- Sys.glob('../output/ACE/*/*/ACE_fits.txt')
-    input_CNH_results <- Sys.glob('../output/CNH/*/*/CNH_results.txt')
-    input_PureCN <- Sys.glob('../output/CNH/*/*/CNH_results.txt')
+    input_depth <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/sarek/*/reports/mosdepth/*_tumor1/*_tumor1.md.mosdepth.summary.txt')
+    input_CNA_stats <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/QDNAseq/*/*/data/CNA_stats.txt')
+    input_ACE_results <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/ACE/*/*/ACE_fits.txt')
+    input_CNH_results <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/CNH/*/*/CNH_results.txt')
+    input_PureCN <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/CNH/*/*/CNH_results.txt')
 
-    input_TMB <- Sys.glob('../output/PureCN/*/*/*_tumor1_mutation_burden.csv')
-    input_variants <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/PureCN/*/*/*_tumor1_variants.csv')
-
+    input_TMB <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/PureCN/*/*/*_tumor1_mutation_burden.csv')
+    input_variants <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/WES/PureCN/*/*/*_tumor1_variants.csv')
     input_signatures <- '/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/SigProfilerAssignment/Assignment_Solution/Activities/Assignment_Solution_Activities.txt'
-    output_SampleData <- "../output/sampledata/SampleData_WES.txt"
+    output_SampleData <- "/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/sampledata/SampleData_WES.txt"
 }
 
 
@@ -79,7 +78,6 @@ target_depth <- depth %>%
     group_by(sample) %>%
     summarise(mean_target_depth = sum(bases) / sum(length) )
 
-
 # Fetch IDH mutation status and vaf
 IDH_status <- variants %>%
   filter(ML.SOMATIC == TRUE) %>%
@@ -101,31 +99,50 @@ IDH_status <- variants %>%
     },
     
     .groups = "drop"
-  )
+  ) %>% ungroup()
 
 
 # Fetch best ACE fit
 ACE_results <- ACE_results %>% group_by(sample,binsize) %>% filter(error == min(error)) %>% ungroup() %>% select(-error, - minimum)
 
 
-# Fetch relative signature contributions 
-signatures <- signatures %>%
-    tibble::column_to_rownames('Samples') %>%
+
+mmr_signatures <- c('SBS6', 'SBS14', 'SBS15', 'SBS20', 'SBS21', 'SBS26', 'SBS44')
+mmr_present    <- intersect(mmr_signatures, colnames(signatures))
+
+# Keep absolute counts before normalizing
+signatures_abs <- signatures %>%
+    tibble::column_to_rownames('Samples')
+
+# Normalize to relative contributions
+signatures_rel <- signatures_abs %>%
     apply(1, function(x) x / sum(x)) %>%
     t() %>%
-    as.data.frame() %>%
-    tibble::rownames_to_column(var= 'sample')
+    as.data.frame()
+
+# Build summary dataframe
+signatures_summary <- signatures_rel %>%
+    tibble::rownames_to_column(var = 'sample') %>%
+    mutate(
+        sample = gsub('_tumor1','',sample),
+        TMZ_counts = signatures_abs[sample, 'SBS11'],
+        MMR_counts     = rowSums(signatures_abs[sample, mmr_present, drop = FALSE]),
+        MMR_rel     = rowSums(signatures_rel[sample, mmr_present, drop = FALSE]),
+        MMR_active  = apply(signatures_abs[sample, mmr_present, drop = FALSE], 1,
+                            function(x) paste(names(x[x > 0]), collapse = ','))
+    )
 
 
 # Join data
 SampleData <- CNA_stats %>%
     left_join(target_depth) %>%
-    left_join(IDH_status) %>%
     left_join(ACE_results) %>%
     left_join(CNH_results) %>%
     left_join(PureCN) %>%
     left_join(TMB) %>%
-    left_join(signatures)
+    left_join(signatures_summary) %>%
+    left_join(IDH_status) 
+
 
 
 
@@ -143,7 +160,8 @@ SampleData <- SampleData %>% rename(
            Nmutations, TMB, CNA_load,
            IDHmt, Codel_1p19, CDKN2AB_status,
            IDHvaf_raw, IDHvaf_model,ACE_purity,CNH_purity, PureCN_purity,ACE_ploidy,CNH_ploidy,PureCN_ploidy,
-           Comment,contains('SBS'))
+           TMZ_counts,contains('MMR'),
+           contains('SBS'), Comment)
 
 #-------------------------------------------------------------------------------
 # 2.1 Write to file
