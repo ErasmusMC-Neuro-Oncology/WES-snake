@@ -2,13 +2,11 @@
 # RunSigProfilerAssignment.py
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #
-# Merge per-sample trinucleotide count files into a single SBS96 matrix
-# and run SigProfilerAssignment cosmic_fit.
-# Designed for WES data; uses exome-renormalized COSMIC v3.5 signatures.
+# Run SigProfilerAssignment with COSMIC v3.3
 #
 # Author: Jurriaan Janssen (j.janssen.1@erasmusmc.nl)
 #
-# condaenv: sigprofiler
+# condaenv: 
 # Usage:
 """
 python3 scripts/RunSigProfilerAssignment.py \

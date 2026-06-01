@@ -17,6 +17,7 @@ Patients = [pat for pat in Patients if not pat in ['SG_004','SG_040']]
 rule all:
     input:
         output_dir + 'plots/Barplot_target_depth.pdf',
+        expand(output_dir + 'QDNAseq/{binsize}/CGHregions.txt', binsize = config['CopyWriteR']['binsizes']),
         expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv', patient = Patients, binsize = config['CopyWriteR']['binsizes'])
 
         
@@ -145,6 +146,25 @@ rule CNA_analysis:
         'scripts/CNA_analysis.R'
 
 
+#---------------------------------------------------------------------------------------------------------------------
+# 2.2 Run CGHregions: summarise CNA calls
+rule CGHregions:
+    input:
+        QDNAseq = lambda wildcards: expand(output_dir + 'QDNAseq/'+wildcards.binsize+ '/{patient}/data/QDNAseq_Segmented.Rds', patient = Patients),
+        ACE_results = lambda wildcards: expand(output_dir + 'ACE/'+wildcards.binsize+'/{patient}/ACE_fits.txt', patient = Patients),
+    output:
+        Recalled = output_dir + 'QDNAseq/{binsize}/QDNAseq_Recalled.Rds',
+        CGHregions = output_dir + 'QDNAseq/{binsize}/CGHregions.txt',
+    resources:
+        mem_mb=100000,
+        gpu=0,
+    params:
+        cytobands = config['CopyWriteR']['cytobands'],
+    conda:
+        "envs/CNA.yaml"
+    script:
+        'scripts/CGHregions.R'
+
 #+++++++++++++++++++++++++++++++++++++++++ 3 DISTINGUISH GERMLINE-SOMATIC +++++++++++++++++++++++++++++++++++++++++++++
 # 3.1 Run PureCN to call tumor purity/ploidy, classify variants and calculate CCF
 rule PureCN:
@@ -215,6 +235,8 @@ rule PureCN:
         """
 
 
+#---------------------------------------------------------------------------------------------------------------------
+# 3.2 Run SigProfilerAssignment: SBS mutational signatures with COSMICv3.3
 rule SigProfilerAssignment:
     input:
         trinuc = expand(output_dir + 'PureCN/1000kbp/{patient}/{patient}_tumor1_trinucleotide_counts.txt',patient=Patients )
@@ -231,7 +253,6 @@ rule SigProfilerAssignment:
             --input {input.trinuc} \
             --output {params.out_dir} 
         """
-        
 
 #++++++++++++++++++++++++++++++++++++++++++++++++ 4 MERGE SAMPLE DATA +++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Create samplesheet with stats
@@ -264,4 +285,4 @@ rule Plot_SampleData:
     script:
         'scripts/Plot_SampleData.R'
         
-        
+
