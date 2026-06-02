@@ -53,24 +53,25 @@ if(exists("snakemake")){
     CNH_error_plot_output <- snakemake@output[["CNH_error_plot"]]
     
 }else{
-    input_bam <- '../output/sarek/MINT09/preprocessing/markduplicates/MINT09_tumor1/MINT09_tumor1.md.bam'
-    sample <- 'MINT09_tumor1'
-    sample_dir <- '../output/copywriter/100kbp/MINT09_tumor1/'
-    QDNAseq_output <- '../output/QDNAseq/100kbp/MINT09/data/QDNAseq_Segments.Rds'
-    Segments_output <- '../output/QDNAseq/100kbp/MINT09/data/QDNAseq_Segments.txt'
+    input_bam <- '/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/sarek/SG_004/preprocessing/markduplicates/SG_004_tumor1/SG_004_tumor1.md.bam'
+    sample <- 'SG_004'
+    sample_dir <- '/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/copywriter/100kbp/SG_004_tumor1/'
+    QDNAseq_output <- '/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/QDNAseq/100kbp/SG_004/data/QDNAseq_Segments.Rds'
+    Segments_output <- '/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/QDNAseq/100kbp/SG_004/data/QDNAseq_Segments.txt'
     ACE_purity_penalty <- 0
     ACE_ploidy_penalty <- 0.5
     CNH_path <- 'scripts/CNH/'
 
-    Segments_igv_output <-paste0(getwd(), '/../output/QDNAseq/100kbp/MINT09/data/QDNAseq_Segments.igv')
-    Profile_output <- '../output/QDNAseq/100kbp/MINT09/data/QDNAseq_Segments.Rds'
-    CNH_results_output <- paste0(getwd(),'/../output/CNH/100kbp/MINT09/CNH_results.txt')
-    CNH_plot_output <- paste0(getwd(),'/../output/CNH/100kbp/MINT09/CNH_plot.pdf')
-    CNH_error_plot_output <- paste0(getwd(),'/../output/CNH/100kbp/MINT09/CNH_error_plot.pdf')
+    Segments_igv_output <-paste0(getwd(), '/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/QDNAseq/100kbp/SG_004/data/QDNAseq_Segments.igv')
+    Profile_output <- '/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/QDNAseq/100kbp/SG_004/data/QDNAseq_Segments.Rds'
+    CNH_results_output <- paste0(getwd(),'/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/CNH/100kbp/SG_004/CNH_results.txt')
+    CNH_plot_output <- paste0(getwd(),'/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/CNH/100kbp/SG_004/CNH_plot.pdf')
+    CNH_error_plot_output <- paste0(getwd(),'/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/CNH/100kbp/SG_004x/CNH_error_plot.pdf')
     genome <- 'hg38'
-    binsize <- '100kbp'
+    binsize <- '1000kbp'
     cores <- 1
-    cytobands <- '/data/Resources/cytobands/hg38/cytoBand.txt'
+    cytobands <- '/home/jurriaan/mnt/BIGR_home/Resources/cytobands/hg38/cytoBand.txt'
+    input_PON <- '/home/jurriaan/mnt/BIGR_home/Resources/PON/CNA_PON_1000kbp_n3.Rds'
     
 }
 
@@ -175,7 +176,19 @@ corrected <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, map
 
 
 #-------------------------------------------------------------------------------
-# 4.2 Perform PON correction
+# 4.2 Segmentation for chromosome X
+#-------------------------------------------------------------------------------
+Segmented_chrX <- applyFilters(QDNAseqCopyNumbers[startsWith(rownames(QDNAseqCopyNumbers),'chrX'),], residual=TRUE, blacklist=TRUE, mappability=FALSE, bases=FALSE , chromosomes=c('chrY','Y'))[] %>%
+    estimateCorrection() %>%
+    correctBins() %>%
+    normalizeBins() %>%
+    smoothOutlierBins() %>%
+    segmentBins() %>%
+    normalizeSegmentedBins()
+
+
+#-------------------------------------------------------------------------------
+# 4.3 Perform PON correction
 #-------------------------------------------------------------------------------
 PON <- readRDS(input_PON)
 
@@ -190,19 +203,25 @@ segmented <-
     segmentBins() %>%
     normalizeSegmentedBins()
 
+
 #-------------------------------------------------------------------------------
-# 4.2 Plot QDNAseq profile and callBins
+# 4.4 Plot QDNAseq profile and callBins
 #-------------------------------------------------------------------------------
 pdf(Profile_output, width = 6 , height = 5)
 plot(segmented)
 dev.off()
 
 #-------------------------------------------------------------------------------
-# 4.3 Retrieve segments
+# 4.5 Retrieve segments
 #-------------------------------------------------------------------------------
 # Fetch segments and calculate their values
+segmentvalues <-  assayData(segmented)$segmented[,1]
+chrX_segmentvalues <- assayData(Segmented_chrX)$segmented[,1]
+segmentvalues[names(chrX_segmentvalues)] <- chrX_segmentvalues
+
+
 Segments <- fData(segmented) %>%
-    mutate(seg.mean =assayData(segmented)$segmented[,1]) %>%
+    mutate(seg.mean = segmentvalues) %>%
     filter(!is.na(seg.mean)) %>%
     arrange(chromosome, start) %>%
   group_by(chromosome) %>%
@@ -225,8 +244,9 @@ Segments <- fData(segmented) %>%
   arrange(chrom_order, loc.start) %>%
     select(ID, chrom, loc.start, loc.end, num.mark, seg.mean) 
 
+
 #-------------------------------------------------------------------------------
-# 4.4 Run ACE
+# 4.6 Run ACE
 #-------------------------------------------------------------------------------
 ACE_results <- ACE::squaremodel(segmented, QDNAseqobjectsample = T,
                                 penalty = as.numeric(ACE_purity_penalty),
@@ -238,7 +258,7 @@ ACE_results$matrixplot
 dev.off()
 
 #-------------------------------------------------------------------------------
-# 4.5 Run CGH call
+# 4.7 Run CGH call
 #-------------------------------------------------------------------------------
 # Run CGHcall and extract calls
 called <- callBins(segmented, nclass = 5) %>% CGHbase::calls()
@@ -248,7 +268,7 @@ called <- called %>% as.data.frame() %>% tibble::rownames_to_column()
 colnames(called) <- c('bin','call')
 
 #-------------------------------------------------------------------------------
-# 4.6 Prepare annotations
+# 4.8 Prepare annotations
 #-------------------------------------------------------------------------------
 cytobands <- read.delim(cytobands, header = F, col.names = c('chromosome','start','end','cytoband','staining'))
 
@@ -296,7 +316,7 @@ arm_level_calls <-
 
 
 #-------------------------------------------------------------------------------
-# 4.6 Calculate stats for export
+# 4.9 Calculate stats for export
 #-------------------------------------------------------------------------------
 CNA_stats <- data.frame(
     CNA_load  =  sum(segment_calls$call != 0) / nrow(segment_calls), # proportion of non-neutral segments
@@ -311,7 +331,7 @@ CNA_stats <- data.frame(
         all(arm_level_calls[arm_level_calls$chromosome == 'chr10',]$CNA_status < 0) && all(arm_level_calls[arm_level_calls$chromosome == 'chr7',]$CNA_proportion > 0.7) 
 )
 #-------------------------------------------------------------------------------
-# 4.6 Run CNH
+# 4.10 Run CNH
 #-------------------------------------------------------------------------------
 exportBins(segmented, file = Segments_igv_output, format = 'igv')
 system(paste0('cd ',CNH_path, ' ; Rscript R/Main.R ', Segments_igv_output,' 0.2 ',CNH_results_output,' ',CNH_plot_output,' ', CNH_error_plot_output))
