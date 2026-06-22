@@ -178,7 +178,7 @@ corrected <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, map
 #-------------------------------------------------------------------------------
 # 4.2 Segmentation for chromosome X
 #-------------------------------------------------------------------------------
-Segmented_chrX <- applyFilters(QDNAseqCopyNumbers[startsWith(rownames(QDNAseqCopyNumbers),'chrX'),], residual=TRUE, blacklist=TRUE, mappability=FALSE, bases=FALSE , chromosomes=c('chrY','Y'))[] %>%
+Segmented_chrX <- applyFilters(QDNAseqCopyNumbers, residual=TRUE, blacklist=TRUE, mappability=FALSE, bases=FALSE , chromosomes=c('chrY','Y')) %>%
     estimateCorrection() %>%
     correctBins() %>%
     normalizeBins() %>%
@@ -186,6 +186,8 @@ Segmented_chrX <- applyFilters(QDNAseqCopyNumbers[startsWith(rownames(QDNAseqCop
     segmentBins() %>%
     normalizeSegmentedBins()
 
+# Subset chrX
+Segmented_chrX <- Segmented_chrX[startsWith(rownames(Segmented_chrX),'chrX'),]
 
 #-------------------------------------------------------------------------------
 # 4.3 Perform PON correction
@@ -216,6 +218,7 @@ dev.off()
 #-------------------------------------------------------------------------------
 # Fetch segments and calculate their values
 segmentvalues <-  assayData(segmented)$segmented[,1]
+# Add chrX segmentvalues
 chrX_segmentvalues <- assayData(Segmented_chrX)$segmented[,1]
 segmentvalues[names(chrX_segmentvalues)] <- chrX_segmentvalues
 

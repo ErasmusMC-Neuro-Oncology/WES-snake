@@ -130,7 +130,7 @@ option_list <- list(
     make_option(c("--max-homozygous-loss"), action = "store", type = "character",
         default = paste(formals(PureCN::runAbsoluteCN)$max.homozygous.loss[2:3], collapse = ","),
         help = "Maximum genomic fraction assigned to a complete loss and maximum size of a loss in bp [default %default]"),
-    make_option(c("--out-vcf"), action = "store_true", default = FALSE,
+    make_option(c("--out-vcf"), action = "store_true", default = TRUE,
         help = "Output: Annotate input VCF with posterior probabilities. Otherwise only produce CSV file."),
     make_option(c("--out"), action = "store", type = "character", default = NULL,
         help = paste("Output: File name prefix to which results should be written.",
@@ -622,7 +622,28 @@ if (is(ret$results[[1]]$gene.calls, "data.frame")) {
 } else {
     flog.warn("--intervals does not contain gene symbols. Not generating gene-level calls.")
 }
+
+# Retrieve ATRX gene mutations (those on chrX)
+annotates_to_gene <- function(ann_list, gene_name) {
+  sapply(ann_list, function(anns) {
+    any(sapply(anns, function(ann) {
+      fields <- strsplit(ann, "\\|")[[1]]
+      length(fields) >= 4 && fields[4] == gene_name
+    }))
+  })
+}
+
+
     
+read.delim(opt$seg_file)$chrom == 'chrX'
+
+    
+    ret$input$sex.vcf
+    
+
+}
+
+
 if (!is.null(ret$input$vcf) &&
     !is.null(ret$results[[1]]$SNV.posterior)) {
     if (opt$out_vcf) {
@@ -633,9 +654,47 @@ if (!is.null(ret$input$vcf) &&
         indexTabix(paste0(file.vcf, ".gz"), format = "vcf")
     }
     file.csv <- paste0(out, "_variants.csv")
-    write.csv(cbind(Sampleid = sampleid, predictSomatic(ret)), file = file.csv,
-        row.names = FALSE, quote = FALSE)
 
+    # Check if there is an atrx mutation detected
+    # If yes, classify based on POPAF 
+    vcf_raw <- VariantAnnotation::readVcf(opt$vcf)
+    atrx_idx <- which(annotates_to_gene(info(vcf_raw)$ANN, "ATRX"))
+    if(length(atrx_idx) > 0){
+        atrx_vcf <- vcf_raw[atrx_idx,]
+        segments <- read.delim(opt$seg_file)
+        chrX_seg <- segments[segments$chrom == 'chrX','seg.mean']
+        AF <- as.numeric(geno(atrx_vcf)$AF)
+        DP <- as.numeric(geno(atrx_vcf)$DP)
+        POPAF <- as.numeric(info(atrx_vcf)$POPAF)
+        popAF_linear <- 10^(-POPAF)
+        ML.SOMATIC   <- popAF_linear < 0.0001 
+        POSTERIOR.SOMATIC <- ifelse(ML.SOMATIC, 1 - popAF_linear, popAF_linear)
+        atrx_row <- data.frame(
+            chr = as.character(seqnames(atrx_vcf)),
+            start = start(atrx_vcf),
+            end = end(atrx_vcf),
+            ID  = names(atrx_vcf),
+            REF = as.character(ref(atrx_vcf)),
+            ALT  = as.character(unlist(alt(atrx_vcf))),
+            ML.SOMATIC = popAF_linear < 0.0001,
+            POSTERIOR.SOMATIC = ifelse(popAF_linear < 0.0001, 1 - popAF_linear, popAF_linear),
+            AR = AF,
+            AR.ADJUSTED = AF,
+            log.ratio = log2(chrX_seg),
+            depth = DP,
+            prior.somatic = 1 - popAF_linear,
+            on.target = 1L,
+            pon.count = as.integer(info(atrx_vcf)$HMF_PON_SC),
+            gene.symbol = "ATRX",
+            stringsAsFactors  = FALSE
+        )
+        out <-  dplyr::bind_rows(cbind(Sampleid = sampleid, predictSomatic(ret)),atrx_row)
+
+        write.csv(out, file = file.csv, row.names = FALSE, quote = FALSE)
+    }else{    
+        write.csv(cbind(Sampleid = sampleid, predictSomatic(ret)), file = file.csv,
+                  row.names = FALSE, quote = FALSE)
+    }
     file.loh <- paste0(out, "_loh.csv")
     write.csv(cbind(Sampleid = sampleid, PureCN::callLOH(ret)), file = file.loh,
         row.names = FALSE, quote = FALSE)
