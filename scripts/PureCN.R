@@ -633,17 +633,6 @@ annotates_to_gene <- function(ann_list, gene_name) {
   })
 }
 
-
-    
-read.delim(opt$seg_file)$chrom == 'chrX'
-
-    
-    ret$input$sex.vcf
-    
-
-}
-
-
 if (!is.null(ret$input$vcf) &&
     !is.null(ret$results[[1]]$SNV.posterior)) {
     if (opt$out_vcf) {
@@ -656,11 +645,16 @@ if (!is.null(ret$input$vcf) &&
     file.csv <- paste0(out, "_variants.csv")
 
     # Check if there is an atrx mutation detected
-    # If yes, classify based on POPAF 
     vcf_raw <- VariantAnnotation::readVcf(opt$vcf)
     atrx_idx <- which(annotates_to_gene(info(vcf_raw)$ANN, "ATRX"))
     if(length(atrx_idx) > 0){
+        # If yes, classify based on POPAF 
         atrx_vcf <- vcf_raw[atrx_idx,]
+
+        # Filter for PASS
+        pass_idx <- which(rowRanges(atrx_vcf)$FILTER == "PASS")
+        
+        atrx_vcf <- atrx_vcf[pass_idx, ]
         segments <- read.delim(opt$seg_file)
         chrX_seg <- segments[segments$chrom == 'chrX','seg.mean']
         AF <- as.numeric(geno(atrx_vcf)$AF)
