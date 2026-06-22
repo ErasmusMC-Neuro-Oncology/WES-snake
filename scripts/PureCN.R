@@ -647,48 +647,59 @@ if (!is.null(ret$input$vcf) &&
     # Check if there is an atrx mutation detected
     vcf_raw <- VariantAnnotation::readVcf(opt$vcf)
     atrx_idx <- which(annotates_to_gene(info(vcf_raw)$ANN, "ATRX"))
+    
     if(length(atrx_idx) > 0){
-        # If yes, classify based on POPAF 
         atrx_vcf <- vcf_raw[atrx_idx,]
-
         # Filter for PASS
         pass_idx <- which(rowRanges(atrx_vcf)$FILTER == "PASS")
-        
         atrx_vcf <- atrx_vcf[pass_idx, ]
+        # Also filter for min AF and depth
+        if(nrow(atrx_vcf) > 0){
+            keep <- as.numeric(geno(atrx_vcf)$AF) >= opt$min_af &
+                as.numeric(geno(atrx_vcf)$DP) >= opt$min_supporting_reads
+            atrx_vcf <- atrx_vcf[keep, ]
+        }
+    }
+
+     # Only build ATRX row if variants survived all filters
+    if(length(atrx_idx) > 0 && nrow(atrx_vcf) > 0){
         segments <- read.delim(opt$seg_file)
-        chrX_seg <- segments[segments$chrom == 'chrX','seg.mean']
+        chrX_seg <- segments[segments$chrom == 'chrX', 'seg.mean']
         AF <- as.numeric(geno(atrx_vcf)$AF)
         DP <- as.numeric(geno(atrx_vcf)$DP)
         POPAF <- as.numeric(info(atrx_vcf)$POPAF)
         popAF_linear <- 10^(-POPAF)
-        ML.SOMATIC   <- popAF_linear < 0.0001 
-        POSTERIOR.SOMATIC <- ifelse(ML.SOMATIC, 1 - popAF_linear, popAF_linear)
+        
         atrx_row <- data.frame(
             chr = as.character(seqnames(atrx_vcf)),
             start = start(atrx_vcf),
             end = end(atrx_vcf),
             ID  = names(atrx_vcf),
-            REF = as.character(ref(atrx_vcf)),
+            REF  = as.character(ref(atrx_vcf)),
             ALT  = as.character(unlist(alt(atrx_vcf))),
             ML.SOMATIC = popAF_linear < 0.0001,
             POSTERIOR.SOMATIC = ifelse(popAF_linear < 0.0001, 1 - popAF_linear, popAF_linear),
-            AR = AF,
+            AR  = AF,
             AR.ADJUSTED = AF,
             log.ratio = log2(chrX_seg),
             depth = DP,
-            prior.somatic = 1 - popAF_linear,
-            on.target = 1L,
+            prior.somatic= 1 - popAF_linear,
+            on.target= 1L,
             pon.count = as.integer(info(atrx_vcf)$HMF_PON_SC),
-            gene.symbol = "ATRX",
-            stringsAsFactors  = FALSE
+            gene.symbol  = "ATRX",
+            stringsAsFactors = FALSE
         )
-        out <-  dplyr::bind_rows(cbind(Sampleid = sampleid, predictSomatic(ret)),atrx_row)
-
-        write.csv(out, file = file.csv, row.names = FALSE, quote = FALSE)
-    }else{    
-        write.csv(cbind(Sampleid = sampleid, predictSomatic(ret)), file = file.csv,
-                  row.names = FALSE, quote = FALSE)
+        variants_out <- dplyr::bind_rows(
+                                   cbind(Sampleid = sampleid, predictSomatic(ret)),
+                                   atrx_row
+                               )
+    } else {
+        variants_out <- cbind(Sampleid = sampleid, predictSomatic(ret))
     }
+
+    write.csv(variants_out, file = file.csv, row.names = FALSE, quote = FALSE)
+
+    
     file.loh <- paste0(out, "_loh.csv")
     write.csv(cbind(Sampleid = sampleid, PureCN::callLOH(ret)), file = file.loh,
         row.names = FALSE, quote = FALSE)
