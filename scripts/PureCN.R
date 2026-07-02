@@ -623,7 +623,7 @@ if (is(ret$results[[1]]$gene.calls, "data.frame")) {
     flog.warn("--intervals does not contain gene symbols. Not generating gene-level calls.")
 }
 
-# Retrieve ATRX gene mutations (those on chrX)
+# Retrieve gene mutations filtered out by PureCN
 annotates_to_gene <- function(ann_list, gene_name) {
   sapply(ann_list, function(anns) {
     any(sapply(anns, function(ann) {
@@ -633,83 +633,119 @@ annotates_to_gene <- function(ann_list, gene_name) {
   })
 }
 
+recover_filtered_variants <- function(vcf_raw, gene_name, ret, seg_file,
+                                       min_af, min_dp) {
+  gene_idx <- which(annotates_to_gene(info(vcf_raw)$ANN, gene_name))
+  if (length(gene_idx) == 0) return(NULL)
+
+  gene_vcf <- vcf_raw[gene_idx, ]
+
+  # Filter PASS, min AF, min depth
+  gene_vcf <- gene_vcf[rowRanges(gene_vcf)$FILTER == "PASS", ]
+  if (nrow(gene_vcf) == 0) return(NULL)
+
+  keep <- as.numeric(geno(gene_vcf)$AF) >= min_af &
+          as.numeric(geno(gene_vcf)$DP) >= min_dp
+  gene_vcf <- gene_vcf[keep, ]
+  if (nrow(gene_vcf) == 0) return(NULL)
+
+  AF           <- as.numeric(geno(gene_vcf)$AF)
+  DP           <- as.numeric(geno(gene_vcf)$DP)
+  POPAF        <- as.numeric(info(gene_vcf)$POPAF)
+  popAF_linear <- 10^(-POPAF)
+  var_chr      <- as.character(seqnames(gene_vcf))
+  var_pos      <- start(gene_vcf)
+
+  if (all(var_chr == "chrX")) {
+    # chrX genes (e.g. ATRX): use input seg file
+    segments  <- read.delim(seg_file)
+    seg_mean  <- mean(segments[segments$chrom == "chrX", "seg.mean"])
+    log_ratio <- rep(log2(seg_mean), length(var_pos))
+  } else {
+    # Autosomal genes (e.g. NF1): match to PureCN result segments
+    purecn_seg <- ret$results[[1]]$seg
+    log_ratio  <- sapply(seq_along(var_pos), function(i) {
+      seg_row <- purecn_seg[purecn_seg$chrom == var_chr[i] &
+                            purecn_seg$loc.start <= var_pos[i] &
+                            purecn_seg$loc.end   >= var_pos[i], ]
+      if (nrow(seg_row) == 0) return(NA)
+      seg_row$log.ratio[1]
+    })
+  }
+
+  data.frame(
+    chr               = var_chr,
+    start             = var_pos,
+    end               = end(gene_vcf),
+    ID                = names(gene_vcf),
+    REF               = as.character(ref(gene_vcf)),
+    ALT               = sapply(alt(gene_vcf), function(x)
+                          paste(as.character(x), collapse = ",")),
+    ML.SOMATIC        = popAF_linear < 0.0001,
+    POSTERIOR.SOMATIC = ifelse(popAF_linear < 0.0001, 1 - popAF_linear,
+                               popAF_linear),
+    AR                = AF,
+    AR.ADJUSTED       = AF,
+    log.ratio         = log_ratio,
+    depth             = DP,
+    prior.somatic     = 1 - popAF_linear,
+    on.target         = 1L,
+    pon.count         = as.integer(info(gene_vcf)$HMF_PON_SC),
+    gene.symbol       = gene_name,
+    stringsAsFactors  = FALSE
+  )
+}
+
 if (!is.null(ret$input$vcf) &&
     !is.null(ret$results[[1]]$SNV.posterior)) {
-    if (opt$out_vcf) {
-        file.vcf <- paste0(out, ".vcf")
-        vcfanno <- predictSomatic(ret, return.vcf = TRUE)
-        writeVcf(vcfanno, file = file.vcf)
-        bgzip(file.vcf, paste0(file.vcf, ".gz"), overwrite = TRUE)
-        indexTabix(paste0(file.vcf, ".gz"), format = "vcf")
-    }
-    file.csv <- paste0(out, "_variants.csv")
+  if (opt$out_vcf) {
+    file.vcf <- paste0(out, ".vcf")
+    vcfanno  <- predictSomatic(ret, return.vcf = TRUE)
+    writeVcf(vcfanno, file = file.vcf)
+    bgzip(file.vcf, paste0(file.vcf, ".gz"), overwrite = TRUE)
+    indexTabix(paste0(file.vcf, ".gz"), format = "vcf")
+  }
 
-    # Check if there is an atrx mutation detected
-    vcf_raw <- VariantAnnotation::readVcf(opt$vcf)
-    atrx_idx <- which(annotates_to_gene(info(vcf_raw)$ANN, "ATRX"))
-    
-    if(length(atrx_idx) > 0){
-        atrx_vcf <- vcf_raw[atrx_idx,]
-        # Filter for PASS
-        pass_idx <- which(rowRanges(atrx_vcf)$FILTER == "PASS")
-        atrx_vcf <- atrx_vcf[pass_idx, ]
-        # Also filter for min AF and depth
-        if(nrow(atrx_vcf) > 0){
-            keep <- as.numeric(geno(atrx_vcf)$AF) >= opt$min_af &
-                as.numeric(geno(atrx_vcf)$DP) >= opt$min_supporting_reads
-            atrx_vcf <- atrx_vcf[keep, ]
-        }
-    }
+  file.csv <- paste0(out, "_variants.csv")
+  vcf_raw  <- VariantAnnotation::readVcf(opt$vcf)
 
-     # Only build ATRX row if variants survived all filters
-    if(length(atrx_idx) > 0 && nrow(atrx_vcf) > 0){
-        segments <- read.delim(opt$seg_file)
-        chrX_seg <- segments[segments$chrom == 'chrX', 'seg.mean']
-        AF <- as.numeric(geno(atrx_vcf)$AF)
-        DP <- as.numeric(geno(atrx_vcf)$DP)
-        POPAF <- as.numeric(info(atrx_vcf)$POPAF)
-        popAF_linear <- 10^(-POPAF)
-        
-        atrx_row <- data.frame(
-            chr = as.character(seqnames(atrx_vcf)),
-            start = start(atrx_vcf),
-            end = end(atrx_vcf),
-            ID  = names(atrx_vcf),
-            REF  = as.character(ref(atrx_vcf)),
-            ALT  = as.character(unlist(alt(atrx_vcf))),
-            ML.SOMATIC = popAF_linear < 0.0001,
-            POSTERIOR.SOMATIC = ifelse(popAF_linear < 0.0001, 1 - popAF_linear, popAF_linear),
-            AR  = AF,
-            AR.ADJUSTED = AF,
-            log.ratio = log2(chrX_seg),
-            depth = DP,
-            prior.somatic= 1 - popAF_linear,
-            on.target= 1L,
-            pon.count = as.integer(info(atrx_vcf)$HMF_PON_SC),
-            gene.symbol  = "ATRX",
-            stringsAsFactors = FALSE
-        )
-        variants_out <- dplyr::bind_rows(
-                                   cbind(Sampleid = sampleid, predictSomatic(ret)),
-                                   atrx_row
-                               )
-    } else {
-        variants_out <- cbind(Sampleid = sampleid, predictSomatic(ret))
-    }
+  # Genes to recover that are filtered out by PureCN:
+  # - ATRX: chrX, excluded due to male sex chromosome handling
+  genes_to_recover <- c("ATRX")
 
-    write.csv(variants_out, file = file.csv, row.names = FALSE, quote = FALSE)
+  recovered_rows <- lapply(genes_to_recover, function(g) {
+    recover_filtered_variants(
+      vcf_raw   = vcf_raw,
+      gene_name = g,
+      ret       = ret,
+      seg_file  = opt$seg_file,
+      min_af    = opt$min_af,
+      min_dp    = 15
+    )
+  })
+  recovered_rows <- Filter(Negate(is.null), recovered_rows)
 
-    
-    file.loh <- paste0(out, "_loh.csv")
-    write.csv(cbind(Sampleid = sampleid, PureCN::callLOH(ret)), file = file.loh,
-        row.names = FALSE, quote = FALSE)
+  base_variants <- cbind(Sampleid = sampleid, predictSomatic(ret))
 
-    file.pdf <- paste0(out, "_chromosomes.pdf")
-    pdf(file.pdf, width = 9, height = 10)
-    chromosomes <- seqlevelsInUse(ret$input$vcf[ret$results[[1]]$SNV.posterior$vcf.ids])
-    chromosomes <- chromosomes[orderSeqlevels(chromosomes)]
-    for (chrom in chromosomes) {
-        plotAbs(ret, 1, type = "BAF", chr = chrom)
-    }
-    invisible(dev.off())
+  if (length(recovered_rows) > 0) {
+    variants_out <- dplyr::bind_rows(base_variants,
+                                     do.call(dplyr::bind_rows, recovered_rows))
+  } else {
+    variants_out <- base_variants
+  }
+
+  write.csv(variants_out, file = file.csv, row.names = FALSE, quote = FALSE)
+
+  file.loh <- paste0(out, "_loh.csv")
+  write.csv(cbind(Sampleid = sampleid, PureCN::callLOH(ret)), file = file.loh,
+    row.names = FALSE, quote = FALSE)
+
+  file.pdf <- paste0(out, "_chromosomes.pdf")
+  pdf(file.pdf, width = 9, height = 10)
+  chromosomes <- seqlevelsInUse(ret$input$vcf[ret$results[[1]]$SNV.posterior$vcf.ids])
+  chromosomes <- chromosomes[orderSeqlevels(chromosomes)]
+  for (chrom in chromosomes) {
+    plotAbs(ret, 1, type = "BAF", chr = chrom)
+  }
+  invisible(dev.off())
 }
