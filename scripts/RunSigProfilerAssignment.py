@@ -25,7 +25,7 @@ python3 scripts/RunSigProfilerAssignment.py \
 #-------------------------------------------------------------------------------
 import argparse
 import os
-import pandas as pd
+
 #-------------------------------------------------------------------------------
 # 0.2 Parse command line arguments
 #-------------------------------------------------------------------------------
@@ -33,11 +33,10 @@ def parse_args():
     "Parse inputs from commandline and returns them as a Namespace object."
     parser = argparse.ArgumentParser(prog = 'python3 RunSigProfilerAssignment.py',
         formatter_class = argparse.RawTextHelpFormatter, description =
-        '  Merge per-sample trinucleotide count files and run SigProfilerAssignment  ')
-    parser.add_argument('--input', help='space-separated list of per-sample trinucleotide count files',
+        '  Run SigProfilerAssignment on a folder of per-sample somatic VCF files  ')
+    parser.add_argument('--input', help='path to folder containing per-sample somatic VCF files',
                         dest='input',
-                        type=str,
-                        nargs='+')
+                        type=str)
     parser.add_argument('--output', help='path to output folder',
                         dest='output',
                         type=str)
@@ -45,53 +44,64 @@ def parse_args():
                         dest='genome',
                         type=str,
                         default='GRCh38')
-    parser.add_argument('--cosmic-version', help='COSMIC signature version (default: 3.5)',
+    parser.add_argument('--cosmic-version', help='COSMIC signature version (default: 3.3)',
                         dest='cosmic_version',
                         type=float,
                         default=3.3)
     args = parser.parse_args()
     return args
 args = parse_args()
-
+"""
+args.input = 'output/WES/SigProfilerAssignment/vcf/'
+args.output = 'output/WES/SigProfilerAssignment/'
+args.genome = 'GRCh38'
+args.cosmic_version = 3.3
+"""
 #-------------------------------------------------------------------------------
-# 1.1 Read and merge trinucleotide count files
+# 1.1 Validate input directory
 #-------------------------------------------------------------------------------
-dfs = []
-for filepath in args.input:
-    df = pd.read_csv(filepath, sep='\t', index_col=0)
-    dfs.append(df)
-
-merged = pd.concat(dfs, axis=1)
-
-assert merged.shape[0] == 96, (
-    f"Expected 96 mutation types after merging, got {merged.shape[0]}. "
-    "Check that all input files use the same MutationType labels."
+assert os.path.isdir(args.input), (
+    f"Input path '{args.input}' is not a directory. "
+    "Please provide a folder containing per-sample VCF files."
 )
 
-print(f"Merged {merged.shape[1]} samples across {merged.shape[0]} mutation types")
-#-------------------------------------------------------------------------------
-# 1.2 Write merged matrix
-#-------------------------------------------------------------------------------
-os.makedirs(args.output, exist_ok=True)
-merged_matrix_path = os.path.join(args.output, 'merged_sbs96_matrix.txt')
-merged.to_csv(merged_matrix_path, sep='\t')
+vcf_files = [f for f in os.listdir(args.input) if f.endswith('.vcf')]
+assert len(vcf_files) > 0, (
+    f"No .vcf files found in '{args.input}'. "
+    "Check that FilterSomaticVCF completed successfully."
+)
 
-print(f"Merged matrix written to {merged_matrix_path}")
+print(f"Found {len(vcf_files)} VCF files in {args.input}")
+os.makedirs(args.output, exist_ok=True)
+
 #-------------------------------------------------------------------------------
-# 2.1 Run SigProfilerAssignment
+# 2.1 Install reference genome if not already present
+#-------------------------------------------------------------------------------
+from SigProfilerMatrixGenerator import install as genInstall
+
+try:
+    genInstall.install(args.genome, rsync=False, bash=True)
+    print(f"Reference genome {args.genome} installed successfully")
+except Exception as e:
+    print(f"Genome installation note: {e}")
+    print("Continuing — genome may already be installed")
+
+#-------------------------------------------------------------------------------
+# 2.2 Run SigProfilerAssignment
 #-------------------------------------------------------------------------------
 from SigProfilerAssignment import Analyzer as Analyze
 
 Analyze.cosmic_fit(
-    samples        = merged_matrix_path,
-    output         = args.output,
-    input_type     = 'matrix',
+    samples = args.input,
+    output = args.output,
+    input_type = 'vcf',
     cosmic_version = args.cosmic_version,
-    exome          = True,           # WES data: use exome-renormalized signatures
-    genome_build   = args.genome,
+    exome = True,
+    genome_build = args.genome,
     export_probabilities = True,
-    make_plots     = True,
-    verbose        = False
+    export_probabilities_per_mutation = True,
+    make_plots = True,
+    verbose = False
 )
 
 print(f"SigProfilerAssignment completed. Results written to {args.output}")
