@@ -1,7 +1,6 @@
 suppressPackageStartupMessages(library(optparse))
 suppressPackageStartupMessages(library(futile.logger))
 
-
 ### Parsing command line ------------------------------------------------------
 option_list <- list(
     make_option(c("-i", "--sampleid"), action = "store", type = "character",
@@ -109,6 +108,8 @@ option_list <- list(
     make_option(c("--max-copy-number"), action = "store", type = "double",
         default =  max(eval(formals(PureCN::runAbsoluteCN)$test.num.copy)),
         help = "Maximum allele-specific integer copy number, only used for fitting allele-specific copy numbers. Higher copy numbers are still be inferred and reported [default %default]"),
+    make_option(c("--utils-file"), action = "store", type = "character", default = NULL,
+    help = "Path to PureCN_utils.R (shared helper functions)"),
     make_option(c("--post-optimize"), action = "store_true", default = FALSE,
         help = "Post-optimization [default %default]"),
     make_option(c("--bootstrap-n"), action = "store", type = "integer", default = 0,
@@ -143,7 +144,9 @@ option_list <- list(
     make_option(c("--parallel"), action = "store_true", default = FALSE,
         help = "Use BiocParallel to fit local optima in parallel."),
     make_option(c("--cores"), action = "store", type = "integer", default = NULL,
-        help = "Use BiocParallel MulticoreParam backend with the specified number of worker cores (--parallel uses the default BiocParallel backend instead)."),
+                help = "Use BiocParallel MulticoreParam backend with the specified number of worker cores (--parallel uses the default BiocParallel backend instead)."),
+    make_option(c("--purity-prior-stringency"), action = "store", type = "double",
+    default = 5, help = "Exponent sharpening the IDH-VAF-based purity prior [default %default]"),
     make_option(c("-v", "--version"), action = "store_true", default = FALSE,
         help = "Print PureCN version"),
     make_option(c("-f", "--force"), action = "store_true", default = FALSE,
@@ -186,110 +189,6 @@ alias_list <- list(
 )
 
 
-# Define the position you want to track
-watch_chr <- "chr2"
-watch_pos <- 208248388
-
-# Patch .removeVariants in the PureCN namespace
-unlockBinding(".removeVariants", asNamespace("PureCN"))
-assignInNamespace(".removeVariants", function(vcf, idx, label, na.rm = TRUE) {
-    if (is(idx, "integer")) {
-        idx <- seq(length(vcf)) %in% idx
-    }
-    if (any(is.na(idx))) {
-        idx[is.na(idx)] <- na.rm
-    }
-    # Check if our variant of interest is among those being removed
-    ranges <- rowRanges(vcf[idx])
-    hit <- as.character(seqnames(ranges)) == watch_chr & 
-           start(ranges) == watch_pos
-    if (any(hit)) {
-        flog.warn(">>> VARIANT OF INTEREST chr2:208248388 REMOVED AT FILTER STEP: %s", label)
-    }
-    if (all(idx)) {
-        stop("No variants passed filter ", label, ".")
-    }
-    vcf[!idx]
-}, ns = asNamespace("PureCN"))
-
-
-
-Fetch_IDH_mut <- function(ann){
-    hotspot_idx <- c()
-    for (i in seq_along(ann)) {
-        entries <- unlist(strsplit(as.character(ann[[i]]), ","))
-        for (x in entries) {
-            fields <- unlist(strsplit(x, "\\|"))
-            if (length(fields) < 11) next
-            gene <- fields[4]
-            protein <- fields[11]
-            # remove p.
-            protein <- gsub("^p\\.", "", protein)
-
-            idh1_hits <- c("Arg132His","Arg132Cys","Arg132Gly",
-                           "Arg132Ser","Arg132Leu")
-            idh2_hits <- c("Arg140Gln",
-                           "Arg172Lys","Arg172Met","Arg172Trp",
-                           "Arg172Gly","Arg172Ser")
-            if ((gene == "IDH1" && protein %in% idh1_hits) ||
-                (gene == "IDH2" && protein %in% idh2_hits)) {
-                hotspot_idx <- c(hotspot_idx, i)
-                break
-            }
-        }
-    }
-
-    hotspot_idx <- unique(hotspot_idx)
-    return(hotspot_idx)
-    
-}
-
-
-SetPriorVcf_IDH_mutant <- function(vcf,
-                                   prior.somatic = c(0.5, 5e-04, 0.999, 1e-04, 0.995, 5e-04),
-                                   ...) {
-    # First let PureCN assign default priors
-    vcf <- PureCN::setPriorVcf(vcf, prior.somatic = prior.somatic , ...)
-
-    # Fetch annotations
-    ann <- info(vcf)$ANN
-    if (is.null(ann)) return(vcf)
-    # Fetch IDH mutation
-    hotspot_idx <- Fetch_IDH_mut(ann)
-
-    if (length(hotspot_idx) > 0) {
-        info(vcf)$PureCN.PR[hotspot_idx] <- 0.9999
-        flog.info("Set high somatic prior for ", length(hotspot_idx),
-                " IDH hotspot mutation(s).")
-    }
-
-    vcf
-}
-
-
-
-
-
-SetPriorPurity <- function(vcf,test.purity){
-    vcf <- VariantAnnotation::readVcf(vcf)
-    ann <- info(vcf)$ANN
-    hotspot_idx <- Fetch_IDH_mut(ann)
-    if(length(hotspot_idx) >  0){
-        ad <- geno(vcf)$AD[hotspot_idx, ]
-        alt_reads   <- ad[[1]][2]
-        total_reads <- ad[[1]][1] + ad[[1]][2]
-
-        expected_vaf <- test.purity / 2
-        likelihood   <- dbinom(alt_reads, size = total_reads, prob = expected_vaf)
-        prior_weights <- likelihood / sum(likelihood)
-    }else{
-        prior_weights <- rep(1, length(test.purity))/length(test.purity)
-    }
-    return(prior_weights)
-}
-
-
-
 
 replace_alias <- function(x, deprecated = TRUE) {
     idx <- match(x, paste0("--", names(alias_list)))
@@ -302,10 +201,17 @@ replace_alias <- function(x, deprecated = TRUE) {
     }
     return(x)
 }
-    
+
+
 opt <- parse_args(OptionParser(option_list = option_list),
     args = replace_alias(commandArgs(trailingOnly = TRUE)),
     convert_hyphens_to_underscores = TRUE)
+
+if (is.null(opt$utils_file) || !file.exists(opt$utils_file)) {
+    stop("Need --utils-file pointing to a valid PureCN_utils.R")
+}
+
+source(opt$utils_file)
 
 if (opt$version) {
     message(as.character(packageVersion("PureCN")))
@@ -315,6 +221,8 @@ if (opt$version) {
 if (!is.null(opt$seed)) {
     set.seed(opt$seed)
 }
+
+
 
 tumor.coverage.file <- opt[["tumor"]]
 normal.coverage.file <- opt[["normal"]]
@@ -331,12 +239,6 @@ out <- opt[["out"]]
 file.rds <- opt$rds
 normalDB <- NULL
 BPPARAM <- NULL
-
-.getFilePrefix <- function(out, sampleid) {
-    isDir <- file.info(out)$isdir
-    if (!is.na(isDir) && isDir) return(file.path(out, sampleid))
-    out
-}
 
 if (!is.null(file.rds) && file.exists(file.rds)) {
     if (is.null(out)) out <- sub(".rds$", "", file.rds)
@@ -365,15 +267,6 @@ if (Sys.getenv("PURECN_DEBUG") != "") {
     debug <- TRUE
 }
 
-.checkFileList <- function(file) {
-    files <- read.delim(file, as.is = TRUE, header = FALSE)[, 1]
-    numExists <- sum(file.exists(files), na.rm = TRUE)
-    if (numExists < length(files)) {
-        stop("File not exists in file ", file)
-    }
-    files
-}
-
 ### Run PureCN ----------------------------------------------------------------
 
 if (file.exists(file.rds) && !opt$force) {
@@ -389,18 +282,6 @@ if (file.exists(file.rds) && !opt$force) {
         }
     }
 
-    .getNormalCoverage <- function(normal.coverage.file) {
-        if (!is.null(normalDB)) {
-            if (is.null(normal.coverage.file)) {
-                normal.coverage.file <- calculateTangentNormal(tumor.coverage.file,
-                    normalDB)
-            }
-        } else if (is.null(normal.coverage.file) && is.null(seg.file) &&
-                   is.null(log.ratio)) {
-            stop("Need either normalDB or normal.coverage.file")
-        }
-        normal.coverage.file
-    }
     normal.coverage.file <- .getNormalCoverage(normal.coverage.file)
     file.log <- paste0(out, ".log")
 
@@ -426,8 +307,8 @@ if (file.exists(file.rds) && !opt$force) {
     test.purity <- seq(opt$min_purity, opt$max_purity, by = 0.01)
 
     # Set prior purity based on IDH mutation
-    prior.purity <- SetPriorPurity(opt$vcf,test.purity)
-
+    prior.purity <- SetPriorPurity(opt$vcf, test.purity, stringency = opt$purity_prior_stringency)
+    
     uses.recommended.fun <- FALSE
     recommended.fun <- "Hclust"
     if (is.null(seg.file)) {
@@ -623,129 +504,74 @@ if (is(ret$results[[1]]$gene.calls, "data.frame")) {
     flog.warn("--intervals does not contain gene symbols. Not generating gene-level calls.")
 }
 
-# Retrieve gene mutations filtered out by PureCN
-annotates_to_gene <- function(ann_list, gene_name) {
-  sapply(ann_list, function(anns) {
-    any(sapply(anns, function(ann) {
-      fields <- strsplit(ann, "\\|")[[1]]
-      length(fields) >= 4 && fields[4] == gene_name
-    }))
-  })
-}
-
-recover_filtered_variants <- function(vcf_raw, gene_name, ret, seg_file,
-                                       min_af, min_dp) {
-  gene_idx <- which(annotates_to_gene(info(vcf_raw)$ANN, gene_name))
-  if (length(gene_idx) == 0) return(NULL)
-
-  gene_vcf <- vcf_raw[gene_idx, ]
-
-  # Filter PASS, min AF, min depth
-  gene_vcf <- gene_vcf[rowRanges(gene_vcf)$FILTER == "PASS", ]
-  if (nrow(gene_vcf) == 0) return(NULL)
-
-  keep <- as.numeric(geno(gene_vcf)$AF) >= min_af &
-          as.numeric(geno(gene_vcf)$DP) >= min_dp
-  gene_vcf <- gene_vcf[keep, ]
-  if (nrow(gene_vcf) == 0) return(NULL)
-
-  AF           <- as.numeric(geno(gene_vcf)$AF)
-  DP           <- as.numeric(geno(gene_vcf)$DP)
-  POPAF        <- as.numeric(info(gene_vcf)$POPAF)
-  popAF_linear <- 10^(-POPAF)
-  var_chr      <- as.character(seqnames(gene_vcf))
-  var_pos      <- start(gene_vcf)
-
-  if (all(var_chr == "chrX")) {
-    # chrX genes (e.g. ATRX): use input seg file
-    segments  <- read.delim(seg_file)
-    seg_mean  <- mean(segments[segments$chrom == "chrX", "seg.mean"])
-    log_ratio <- rep(log2(seg_mean), length(var_pos))
-  } else {
-    # Autosomal genes (e.g. NF1): match to PureCN result segments
-    purecn_seg <- ret$results[[1]]$seg
-    log_ratio  <- sapply(seq_along(var_pos), function(i) {
-      seg_row <- purecn_seg[purecn_seg$chrom == var_chr[i] &
-                            purecn_seg$loc.start <= var_pos[i] &
-                            purecn_seg$loc.end   >= var_pos[i], ]
-      if (nrow(seg_row) == 0) return(NA)
-      seg_row$log.ratio[1]
-    })
-  }
-
-  data.frame(
-    chr               = var_chr,
-    start             = var_pos,
-    end               = end(gene_vcf),
-    ID                = names(gene_vcf),
-    REF               = as.character(ref(gene_vcf)),
-    ALT               = sapply(alt(gene_vcf), function(x)
-                          paste(as.character(x), collapse = ",")),
-    ML.SOMATIC        = popAF_linear < 0.0001,
-    POSTERIOR.SOMATIC = ifelse(popAF_linear < 0.0001, 1 - popAF_linear,
-                               popAF_linear),
-    AR                = AF,
-    AR.ADJUSTED       = AF,
-    log.ratio         = log_ratio,
-    depth             = DP,
-    prior.somatic     = 1 - popAF_linear,
-    on.target         = 1L,
-    pon.count         = as.integer(info(gene_vcf)$HMF_PON_SC),
-    gene.symbol       = gene_name,
-    stringsAsFactors  = FALSE
-  )
-}
-
 if (!is.null(ret$input$vcf) &&
     !is.null(ret$results[[1]]$SNV.posterior)) {
-  if (opt$out_vcf) {
-    file.vcf <- paste0(out, ".vcf")
-    vcfanno  <- predictSomatic(ret, return.vcf = TRUE)
-    writeVcf(vcfanno, file = file.vcf)
-    bgzip(file.vcf, paste0(file.vcf, ".gz"), overwrite = TRUE)
-    indexTabix(paste0(file.vcf, ".gz"), format = "vcf")
-  }
+    if (opt$out_vcf) {
+        file.vcf <- paste0(out, ".vcf")
+        vcfanno  <- predictSomatic(ret, return.vcf = TRUE)
+        writeVcf(vcfanno, file = file.vcf)
+        bgzip(file.vcf, paste0(file.vcf, ".gz"), overwrite = TRUE)
+        indexTabix(paste0(file.vcf, ".gz"), format = "vcf")
+    }
 
-  file.csv <- paste0(out, "_variants.csv")
-  vcf_raw  <- VariantAnnotation::readVcf(opt$vcf)
 
-  # Genes to recover that are filtered out by PureCN:
-  # - ATRX: chrX, excluded due to male sex chromosome handling
-  genes_to_recover <- c("ATRX")
+# Define genes and hotspots to recover
+# NULL protein_patterns = recover all LoF variants in gene
+# Non-NULL = recover only specific hotspot amino acid changes
 
-  recovered_rows <- lapply(genes_to_recover, function(g) {
-    recover_filtered_variants(
-      vcf_raw   = vcf_raw,
-      gene_name = g,
-      ret       = ret,
-      seg_file  = opt$seg_file,
-      min_af    = opt$min_af,
-      min_dp    = 15
+    file.csv <- paste0(out, "_variants.csv")
+    vcf_raw  <- VariantAnnotation::readVcf(opt$vcf)
+
+    genes_to_recover <- list(
+        list(gene = "ATRX",  protein_patterns = NULL),
+        list(gene = "IDH1",  protein_patterns = c("Arg132", "R132")),
+        list(gene = "IDH2",  protein_patterns = c("Arg140", "R140", "Arg172", "R172"))
     )
-  })
-  recovered_rows <- Filter(Negate(is.null), recovered_rows)
 
-  base_variants <- cbind(Sampleid = sampleid, predictSomatic(ret))
+    recovered_rows <- lapply(genes_to_recover, function(x) {
+        recover_filtered_variants(
+            vcf_raw          = vcf_raw,
+            gene_name        = x$gene,
+            ret              = ret,
+            seg_file         = opt$seg_file,
+            min_af           = opt$min_af,
+            min_dp           = 15,
+            protein_patterns = x$protein_patterns
+        )
+    })
+    recovered_rows <- Filter(Negate(is.null), recovered_rows)
 
-  if (length(recovered_rows) > 0) {
-    variants_out <- dplyr::bind_rows(base_variants,
-                                     do.call(dplyr::bind_rows, recovered_rows))
-  } else {
-    variants_out <- base_variants
-  }
+    base_variants <- cbind(Sampleid = sampleid, predictSomatic(ret), recovered = FALSE)
 
-  write.csv(variants_out, file = file.csv, row.names = FALSE, quote = FALSE)
+    if (length(recovered_rows) > 0) {
+        library(dplyr)
+        variants_out <- dplyr::bind_rows(base_variants,
+                                         do.call(dplyr::bind_rows, recovered_rows))
+        variants_out <- variants_out %>%
+            dplyr::group_by(chr, start, REF, ALT) %>%
+            dplyr::slice_min(order_by = recovered, n = 1) %>% 
+            dplyr::ungroup()
+    } else {
+        variants_out <- base_variants
+    }
 
-  file.loh <- paste0(out, "_loh.csv")
-  write.csv(cbind(Sampleid = sampleid, PureCN::callLOH(ret)), file = file.loh,
-    row.names = FALSE, quote = FALSE)
+    write.csv(variants_out, file = file.csv, row.names = FALSE, quote = FALSE)
 
-  file.pdf <- paste0(out, "_chromosomes.pdf")
-  pdf(file.pdf, width = 9, height = 10)
-  chromosomes <- seqlevelsInUse(ret$input$vcf[ret$results[[1]]$SNV.posterior$vcf.ids])
-  chromosomes <- chromosomes[orderSeqlevels(chromosomes)]
-  for (chrom in chromosomes) {
-    plotAbs(ret, 1, type = "BAF", chr = chrom)
-  }
-  invisible(dev.off())
+    file.loh <- paste0(out, "_loh.csv")
+    write.csv(cbind(Sampleid = sampleid, PureCN::callLOH(ret)), file = file.loh,
+              row.names = FALSE, quote = FALSE)
+    file.pdf <- paste0(out, "_chromosomes.pdf")
+    pdf(file.pdf, width = 9, height = 10)
+    chromosomes <- seqlevelsInUse(ret$input$vcf[ret$results[[1]]$SNV.posterior$vcf.ids])
+    chromosomes <- chromosomes[orderSeqlevels(chromosomes)]
+    for (chrom in chromosomes) {
+        tryCatch({
+            plotAbs(ret, 1, type = "BAF", chr = chrom)
+        }, error = function(e) {
+            flog.warn("Failed to plot BAF for %s: %s -- skipping this chromosome's plot.", chrom, conditionMessage(e))
+        })
+    }
+    invisible(dev.off())
+    
 }
+

@@ -5,6 +5,7 @@ dependencies:
   - pip
   - pandas
   - numpy
+  - bcftools
   - pip:
       - SigProfilerAssignment
       - SigProfilerMatrixGenerator

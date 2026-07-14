@@ -52,7 +52,8 @@ rule Sarek:
     resources:
         mem_mb=100000,
         gpu=0,
-        runtime='30h'
+        runtime='30h',
+        slurm_extra="'--exclude=gpu-hm-001'"
     conda:
         "envs/nextflow.yaml"
     log:
@@ -115,7 +116,7 @@ rule CNA_analysis:
     input:
         bam= output_dir + "sarek/{patient}/preprocessing/markduplicates/{patient}_tumor1/{patient}_tumor1.md.bam"
     output:
-        sample_dir = temp(directory(output_dir + "copywriter/{binsize}/{patient}/")),
+        sample_dir = directory(output_dir + "copywriter/{binsize}/{patient}/"),
         QDNAseq = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segmented.Rds',
         Profile = output_dir + 'QDNAseq/{binsize}/{patient}/plots/QDNAseq_segmented_profile.pdf',
         Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt',
@@ -128,10 +129,10 @@ rule CNA_analysis:
         CNH_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_plot.pdf',
         CNH_error_plot = output_dir + 'CNH/{binsize}/{patient}/CNH_errorplot.pdf',
     resources:
-        mem_mb=100000,
+        mem_mb=50000,
         gpu=0,
-        runtime='30h'
-        
+        runtime='30h',
+        slurm_extra="'--exclude=gpu-hm-001,gpu005'"
     params:
         genome = 'hg38',
         cores = config['CopyWriteR']['cores'],
@@ -165,18 +166,18 @@ rule CGHregions:
     script:
         'scripts/CGHregions.R'
 
-#+++++++++++++++++++++++++++++++++++++++++ 3 DISTINGUISH GERMLINE-SOMATIC +++++++++++++++++++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++ 3 DISTINGUISH GERMLINE-SOMATIC ++++++++++++++++++++++++++++++++++++++++++++       
 # 3.1 Run PureCN to call tumor purity/ploidy, classify variants and calculate CCF
 rule PureCN:
     input:
         vcf =  output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
         Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt'
     output:
-        vcf = temp(output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/PureCN_{binsize}.vcf"),
-        intervals = temp(output_dir + 'PureCN/{binsize}/{patient}/baits_hg19_intervals.txt'),
+        intervals = output_dir + 'PureCN/{binsize}/{patient}/baits_hg19_intervals.txt',
         PureCN_rds = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.rds',
         PureCN_purity = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.csv',
         variants = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',
+        vcf_out = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.vcf',
         TMB = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',
         signatures = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_signatures.csv',
         trinuc = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_trinucleotide_counts.txt'
@@ -191,9 +192,15 @@ rule PureCN:
         min_cosmic_cnt = config['PureCN']['min_cosmic_cnt'],
         CNA_sdev =  config['PureCN']['CNA_sdev'],
         CNA_max_nonclonal =  config['PureCN']['CNA_max_nonclonal'],
+        utils = config['all']['snake_dir'] + "/scripts/PureCN_utils.R",
         outdir=lambda wildcards: f"{output_dir}/PureCN/{wildcards.binsize}/{wildcards.patient}",
     conda:
         "envs/PureCN.yaml"
+    resources:
+        mem_mb=5000,
+        runtime='5h',
+        gpu=0,
+        slurm_extra="'--exclude=gpu-hm-001'"
     shell:
         """
         # Find PureCN installation
@@ -207,17 +214,15 @@ rule PureCN:
         --off-target \
         --genome {params.genome}
 
-        # Modify input vcf
-        python3 {params.snake_dir}/scripts/FilterVCF.py -i {input.vcf} -o {output.vcf}
-        
         # Run PureCN
         Rscript {params.snake_dir}/scripts/PureCN.R \
         --out {params.outdir} \
         --sampleid {wildcards.patient}_tumor1 \
         --segfile {input.Segments} \
-        --vcf {output.vcf} \
+        --vcf {input.vcf} \
         --intervals {output.intervals} \
         --genome {params.genome} \
+        --utils-file {params.utils} \
         --segsdev {params.CNA_sdev} \
         --min-af {params.min_af} \
         --min-base-quality {params.min_bq} \
@@ -234,23 +239,109 @@ rule PureCN:
         --force
         """
 
+# 3.1 Run PureCN with curated purity
+rule PureCN_CuratedPurity:
+    input:
+        vcf =  output_dir + "sarek/{patient}/annotation/mutect2/{patient}_tumor1/{patient}_tumor1.annotated.vcf.gz",
+        variants = output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',
+        Segments = output_dir + 'QDNAseq/{binsize}/{patient}/data/QDNAseq_Segments.txt',
+        ACE_results = output_dir + 'ACE/{binsize}/{patient}/ACE_fits.txt',
+        intervals = output_dir + 'PureCN/{binsize}/{patient}/baits_hg19_intervals.txt',
+    output:
+        Purity_bounds = output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_purity_bounds.csv',
+        Purity_vars = output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_purity_bounds.env',
+        PureCN_rds = output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1.rds',
+        PureCN_purity = output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1.csv',
+        variants = output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1_variants.csv',
+        vcf_out = output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1.vcf',
+        TMB = output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',
+        signatures = output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1_signatures.csv',
+        trinuc = output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1_trinucleotide_counts.txt'
+    params:
+        genome = 'hg38',
+        ref = config['all']['ref'],
+        snake_dir = config['all']['snake_dir'],
+        targets = config['sarek']['targetregions'],
+        min_af = config['PureCN']['min_af'],
+        min_alt = config['PureCN']['min_alt'],
+        min_bq = config['PureCN']['min_bq'],
+        min_cosmic_cnt = config['PureCN']['min_cosmic_cnt'],
+        CNA_sdev =  config['PureCN']['CNA_sdev'],
+        CNA_max_nonclonal =  config['PureCN']['CNA_max_nonclonal'],
+        utils = config['all']['snake_dir'] + "/scripts/PureCN_utils.R",
+        outdir=lambda wildcards: f"{output_dir}/PureCN_curated/{wildcards.binsize}/{wildcards.patient}",
+    conda:
+        "envs/PureCN.yaml"
+    resources:
+        mem_mb=5000,
+        runtime='5h',
+        gpu=0,
+        slurm_extra="'--exclude=gpu-hm-001'"
+    shell:
+        """
+        # Curate purity
+        Rscript {params.snake_dir}/scripts/CuratePurity.R \
+        --variants {input.variants} \
+        --ACE_results {input.ACE_results} \
+        --seg-file {input.Segments} \
+        --out {output.Purity_bounds}
 
+        # Load min/max purity and ploidy bounds
+        source {output.Purity_vars}
+
+        # Run PureCN, constrained to the curated search window
+        Rscript {params.snake_dir}/scripts/PureCN.R \
+        --out {params.outdir} \
+        --sampleid {wildcards.patient}_tumor1 \
+        --segfile {input.Segments} \
+        --vcf {input.vcf} \
+        --intervals {input.intervals} \
+        --genome {params.genome} \
+        --utils-file {params.utils} \
+        --segsdev {params.CNA_sdev} \
+        --min-af {params.min_af} \
+        --min-base-quality {params.min_bq} \
+        --min-supporting-reads {params.min_alt} \
+        --min-cosmic-cnt {params.min_cosmic_cnt} \
+        --max-non-clonal {params.CNA_max_nonclonal} \
+        --min-purity $min_purity --max-purity $max_purity \
+        --min-ploidy $min_ploidy --max-ploidy $max_ploidy \
+        --cosmic-cnt-info-field GENOME_SCREEN_SAMPLE_COUNT
+
+        # Calculate signatures/statistics
+        Rscript {params.snake_dir}/scripts/Dx.R \
+        --rds {output.PureCN_rds} \
+        --callable {params.targets} \
+        --signatures \
+        --force
+        """
+    
+
+        
+        
 #---------------------------------------------------------------------------------------------------------------------
 # 3.2 Run SigProfilerAssignment: SBS mutational signatures with COSMICv3.3
 rule SigProfilerAssignment:
     input:
-        trinuc = expand(output_dir + 'PureCN/1000kbp/{patient}/{patient}_tumor1_trinucleotide_counts.txt',patient=Patients )
+        vcf_out = expand(output_dir + 'PureCN_curated/500kbp/{patient}/{patient}_tumor1.vcf', patient= Patients),
     output:
         activities = output_dir + 'SigProfilerAssignment/Assignment_Solution/Activities/Assignment_Solution_Activities.txt'
     params:
+        vcf_dir = output_dir + 'PureCN_curated/500kbp/vcfs/',
         snake_dir = config['all']['snake_dir'],
         out_dir = output_dir + 'SigProfilerAssignment',
     conda:
         'envs/sigprofiler.yaml'
     shell:
         """
+        mkdir -p {params.vcf_dir}
+        for vcf in {input.vcf_out}; do
+            sample=$(basename $vcf .vcf)
+            bcftools view --include 'INFO/PureCN.ML.SOMATIC=1' $vcf > {params.vcf_dir}/$sample.vcf
+        done
+        
         python3 {params.snake_dir}/scripts/RunSigProfilerAssignment.py \
-            --input {input.trinuc} \
+            --input {params.vcf_dir} \
             --output {params.out_dir} 
         """
 
@@ -260,11 +351,11 @@ rule Create_SampleData:
     input:
         depth = expand(output_dir + "sarek/{patient}/reports/mosdepth/{patient}_tumor1/{patient}_tumor1.md.mosdepth.summary.txt",patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         CNA_stats = expand(output_dir + 'QDNAseq/{binsize}/{patient}/data/CNA_stats.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
-        ACE_results = expand(output_dir + 'ACE/{binsize}/{patient}/ACE_fits.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         CNH_results = expand(output_dir + 'CNH/{binsize}/{patient}/CNH_results.txt',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
-        PureCN_purity = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
-        TMB = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
-        variants = expand(output_dir + 'PureCN/{binsize}/{patient}/{patient}_tumor1_variants.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        Purities = expand(output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_purity_bounds.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        PureCN_purity = expand(output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        TMB = expand(output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1_mutation_burden.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
+        variants = expand(output_dir + 'PureCN_curated/{binsize}/{patient}/{patient}_tumor1_variants.csv',patient = Patients, binsize = config['CopyWriteR']['binsizes']),
         signatures = output_dir + 'SigProfilerAssignment/Assignment_Solution/Activities/Assignment_Solution_Activities.txt'
     output:
         SampleData = output_dir + 'sampledata/SampleData_WES.txt'

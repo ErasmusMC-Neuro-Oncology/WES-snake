@@ -14,7 +14,7 @@ sarek:
 
 CopyWriteR:
     cores: 1 # number of cores
-    binsizes: ['100kbp','1000kbp'] # CopyWriteR binsize (default=100kbp and 1000kbp)
+    binsizes: ['100kbp','1000kbp','500kbp'] # CopyWriteR binsize (default=100kbp and 1000kbp)
     cytobands: '/trinity/home/r115502/Resources/cytobands/hg38/cytoBand.txt'
 
 ACE:
