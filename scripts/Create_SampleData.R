@@ -68,6 +68,7 @@ TMB <- tibble::tibble(sample = purrr::map(input_TMB, ~strsplit(.x,'/')[[1]][10])
 variants <- tibble::tibble(sample = purrr::map(input_variants, ~strsplit(.x,'/')[[1]][10]),binsize = purrr::map(input_variants, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_variants,~read.delim(.x, sep =','))) %>% tidyr::unnest()
 
 signatures <- read.delim(input_signatures)
+
 #signatures <- tibble::tibble(sample = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][9]),binsize = purrr::map(input_signatures, ~strsplit(.x,'/')[[1]][9]), data = purrr::map(input_signatures,~read.delim(.x, sep =','))) %>% tidyr::unnest()
 
 
@@ -112,14 +113,17 @@ signatures_rel <- signatures_abs %>%
 
 # Build summary dataframe
 signatures_summary <- signatures_rel %>%
-    tibble::rownames_to_column(var = 'sample') %>%
+    tibble::rownames_to_column(var = 'sample_short') %>%
     mutate(
-        sample = gsub('_tumor1','',sample),
-        TMZ_counts = signatures_abs[sample, 'SBS11'],
-        MMR_counts     = rowSums(signatures_abs[sample, mmr_present, drop = FALSE]),
-        MMR_rel     = rowSums(signatures_rel[sample, mmr_present, drop = FALSE]),
-        MMR_active  = apply(signatures_abs[sample, mmr_present, drop = FALSE], 1,
-                            function(x) paste(names(x[x > 0]), collapse = ',')))
+        sample_short = gsub('_tumor1','',sample_short),
+        TMZ_counts = signatures_abs[sample_short, 'SBS11'],
+        MMR_counts     = rowSums(signatures_abs[sample_short, mmr_present, drop = FALSE]),
+        MMR_rel     = rowSums(signatures_rel[sample_short, mmr_present, drop = FALSE]),
+        MMR_active  = apply(signatures_abs[sample_short, mmr_present, drop = FALSE], 1,
+                            function(x) paste(names(x[x > 0]), collapse = ','))) %>%
+    left_join(CNA_stats %>% mutate(sample_short = purrr::map_chr(sample,~strsplit(.x, '\\.')[[1]][1])) %>% select(sample,sample_short)) %>%
+    select(-sample_short)
+
 
 # Join data
 SampleData <- CNA_stats %>%
@@ -131,6 +135,7 @@ SampleData <- CNA_stats %>%
     left_join(IDH_status) %>%
     left_join(Purities)
 
+
 # Rename and select columns
 SampleData <- SampleData %>% rename(
                    CNH = Heterogeneity,
@@ -140,7 +145,7 @@ SampleData <- SampleData %>% rename(
     select(sample,binsize,Sex,mean_target_depth,
            Nmutations, TMB, CNA_load,
            IDHmt, Codel_1p19, CDKN2AB_status,
-           IDHvaf_raw,IDH_purity,purity_1p19q,TP53_purity,anchor_consensus, ace_purity,ace_ploidy, PureCN_purity,PureCN_ploidy,
+           IDHvaf_raw,anchors_detail,IDH_purity,purity_1p19q,TP53_purity,anchor_consensus, ace_purity,ace_ploidy, PureCN_purity,PureCN_ploidy,
            TMZ_counts,contains('MMR'),
            contains('SBS'), Comment)
 

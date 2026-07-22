@@ -34,8 +34,8 @@ if(exists("snakemake")){
     output_Recalled <- snakemake@output[["Recalled"]]
     output_CGHregions <- snakemake@output[["CGHregions"]]
 }else{
-    input_QDNAseq <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/QDNAseq/1000kbp/*/data/QDNAseq_Segmented.Rds')
-    input_ACE_results <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/ACE/*/*/ACE_fits.txt')
+    input_QDNAseq <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/QDNAseq/500kbp/*/data/QDNAseq_Segmented.Rds')
+    input_ACE_results <- Sys.glob('/home/jurriaan/mnt/BIGR_home/SSLOWGRADE/output/WES/ACE/500kbp/*/ACE_fits.txt')
     input_cytobands <- '/home/jurriaan/mnt/BIGR_home/Resources/cytobands/hg38/cytoBand.txt'
    
 }
@@ -64,6 +64,7 @@ ACE_results <- tibble::tibble(sample = purrr::map(input_ACE_results, ~strsplit(.
 #-------------------------------------------------------------------------------
 purities <- ACE_results$cellularity[match(ACE_results$sample, Biobase::sampleNames(QDNAseq_object))]
 recalled <- callBins(QDNAseq_object, nclass=3, cellularity=purities)
+
 
 #-------------------------------------------------------------------------------
 # 3.1 Run CGHregions

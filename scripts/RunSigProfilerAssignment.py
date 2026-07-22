@@ -98,6 +98,13 @@ Analyze.cosmic_fit(
     cosmic_version = args.cosmic_version,
     exome = True,
     genome_build = args.genome,
+    exclude_signature_subgroups = [
+        'Immunosuppressants_signatures',   # drops SBS32, SBS87 — no plausible azathioprine/thiopurine exposure in glioma
+        'UV_signatures',                   # not CNS-relevant
+        'AA_signatures',                   # aristolochic acid — not CNS-relevant
+        'Colibactin_signatures',           # gut-specific
+        'Lymphoid_signatures',             # AID/RAG-related, not relevant outside lymphoid malignancies
+    ],
     export_probabilities = True,
     export_probabilities_per_mutation = True,
     make_plots = True,

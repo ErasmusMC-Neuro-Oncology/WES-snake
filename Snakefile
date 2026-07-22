@@ -62,7 +62,7 @@ rule Sarek:
         version = 'dev',
         genome = 'GATK.GRCh38',
         profile = "singularity",
-        tools = "mutect2,merge",
+        tools = "mutect2,msisensor2,merge",
         targets = config['sarek']['targetregions'],
         intervals = config['sarek']['interval_padding'],
         HMF_PON = config['sarek']['HMF_PON'],
@@ -317,8 +317,7 @@ rule PureCN_CuratedPurity:
         """
     
 
-        
-        
+
 #---------------------------------------------------------------------------------------------------------------------
 # 3.2 Run SigProfilerAssignment: SBS mutational signatures with COSMICv3.3
 rule SigProfilerAssignment:

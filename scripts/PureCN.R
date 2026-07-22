@@ -439,15 +439,35 @@ if (file.exists(file.rds) && !opt$force) {
 
     ### RESTORE VARIANTS WITH COSMIC BUT NO DBSNP -------------------------------------------------------
     tmp <- ret$results[[1]]
-    p <- tmp$SNV.posterior$posteriors
+    p   <- tmp$SNV.posterior$posteriors
+    
+    # Get POPAF from the stored VCF using variant IDs
+    vcf_ids  <- ret$results[[1]]$SNV.posterior$vcf.ids
+    
+    vcf_used <- ret$input$vcf[vcf_ids]
+    popaf    <- as.numeric(info(vcf_used)$POPAF)
+    
+    ### RESTORE VARIANTS WITH COSMIC BUT NO DBSNP -----------------------------------
     # Change somatic status/CCF for variants with high prior but marked as germline
-    ix <- which(p$prior.somatic > 0.9 & !p$ML.SOMATIC)
-    p[ix,'ML.SOMATIC'] <- TRUE
-    p[ix,'CELLFRACTION'] <- 1
+    ix_cosmic <- which(p$prior.somatic > 0.9 & !p$ML.SOMATIC)
+    flog.info("Restoring %d COSMIC variants marked as germline to somatic", length(ix_cosmic))
+    p[ix_cosmic, 'ML.SOMATIC']   <- TRUE
+    p[ix_cosmic, 'CELLFRACTION'] <- 1
+    
+    ### SET COMMON VARIANTS (POPAF < 2) TO GERMLINE ---------------------------------
+    # POPAF is -log10 scaled: POPAF < 2 means population AF > 0.01
+    # These are common variants that are very likely germline
+    ix_germline <- which(popaf < 2 & p$ML.SOMATIC)
+    flog.info("Setting %d variants with POPAF < 2 to germline", length(ix_germline))
+    p[ix_germline, 'ML.SOMATIC']   <- FALSE
+    p[ix_germline, 'CELLFRACTION'] <- NA
+    
+    p[ix_germline,]$CELLFRACTION
     tmp$SNV.posterior$posteriors <- p
     ret$results[[1]] <- tmp
-    # ---------------------------------------------------------------------------------------------------
+    # --------------------------------------------------------------------------------
     saveRDS(ret, file = file.rds, version = opt[["rds_version"]])
+    
 }
 
 

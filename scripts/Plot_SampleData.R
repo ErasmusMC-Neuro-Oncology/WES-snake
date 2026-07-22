@@ -28,15 +28,15 @@ if(exists("snakemake")){
     input_SampleData <- snakemake@input[["SampleData"]]
     output_depth <- snakemake@output[["Barplot_depth"]]
 }else{
-    input_SampleData <- "../output/WES/sampledata/SampleData_WES.txt"
-    output_depth <- "../output/plots/Barplot_target_depth.pdf"
+    input_SampleData <- "../../../output/WES/sampledata/SampleData_WES.txt"
+    output_depth <- "../../../output/plots/Barplot_target_depth.pdf"
 }
 #-------------------------------------------------------------------------------
 # 1.1 Read data 
 #-------------------------------------------------------------------------------
 # Read datasets
 SampleData <- read.delim(input_SampleData)
-
+SampleData %>% filter(sample == 'SG_025')
 #-------------------------------------------------------------------------------
 # 1.2 Plot data
 #-------------------------------------------------------------------------------
